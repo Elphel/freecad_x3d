@@ -523,6 +523,11 @@ def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, c
     inlineNode.set('url',assName + '_config'+ X3D_EXT)
     inlineNode.set('nameSpaceName',assName)
 
+    modelNode = et.SubElement(sceneNode, 'Transform')
+    modelNode.set('id','transform_'+assName)
+    modelNode.set('translation','%f %f %f'%(0,0,0))
+    modelNode.set('rotation','%f %f %f %f'%(0,0,0,0))
+
     defined_parts = {} # for each defined part holds index (for ID generation)
     for i, component in enumerate(components['objects']):
         parts =           components['candidates'][i]
@@ -544,7 +549,7 @@ def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, c
             defined_parts[part] += 1
         else:
             defined_parts[part] = 0
-        switchNode = et.SubElement(sceneNode, 'Switch')
+        switchNode = et.SubElement(modelNode, 'Switch')
         switchNode.set('id','switch_'+part+":"+str(defined_parts[part]))
         switchNode.set('class','switch_'+part)
         switchNode.set('whichChoice','0')
