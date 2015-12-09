@@ -1,3 +1,5 @@
+from __future__ import division
+from __future__ import print_function
 '''
 # Copyright (C) 2015, Elphel.inc.
 # File: x3d_step_assy.py
@@ -33,9 +35,6 @@ __version__ = "3.0+"
 __maintainer__ = "Andrey Filippov"
 __email__ = "andrey@elphel.com"
 __status__ = "Development"
-
-from __future__ import division
-from __future__ import print_function
 
 import FreeCAD
 import Part
@@ -463,23 +462,49 @@ def generatePartsX3d(dir_list = DIR_LIST, colorPerVertex = COLOR_PER_VERTEX):
             exportX3D(x3d_objects, x3dFile, colorPerVertex)
             FreeCAD.closeDocument(doc.Name)
 
-def matrix4ToX3D(m, eps=0.000001):
-    print ("m=",m)
+def matrix4ToX3D(m, eps=0.000001): #assuming 3x3 matrix is pure rotational
     axis=FreeCAD.Vector(m.A32-m.A23, m.A13-m.A31, m.A21-m.A12)
-    print ("axis=",axis)
     r = axis.Length # math.sqrt(axis.X**2 + axis.Y**2 + axis.Z**2)
-    print ("r=",r)
     tr = m.A11 + m.A22 + m.A33
-    print ("tr=",tr)
     theta= math.atan2(r,tr - 1)
-    print ("theta=",theta)
-    if r < eps*abs(tr):
-        axis = FreeCAD.Vector(0,0,0)
-        theta = 0
-    else:
+    if r> eps:
         axis.normalize()
+    else:
+        #Based on Java code http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToAngle
+        if abs(tr-3.0) < eps:
+            theta = 0
+            axis = FreeCAD.Vector(1, 0, 0)
+        else:
+            theta = math.pi
+            sqr2=math.sqrt(2)
+            xx = (m.A11+1)/2;
+            yy = (m.A22+1)/2;
+            zz = (m.A33+1)/2;
+            xy = (m.A12+m.A21)/4;
+            xz = (m.A13+m.A31)/4;
+            yz = (m.A23+m.A32)/4;
+            if (xx > yy) and (xx > zz): # m.A11 is the largest diagonal term
+                if xx <eps:
+                    axis = FreeCAD.Vector(0,sqr2,sqr2)
+                else:
+                    x = math.sqrt(xx)
+                    axis = FreeCAD.Vector(x,xy/x,xz/x)
+            elif yy > zz: # m.A22 is the largest diagonal term
+                if yy <eps:
+                    axis = FreeCAD.Vector(sqr2,0.0,sqr2)
+                else:
+                    y = math.sqrt(yy)
+                    axis = FreeCAD.Vector(xy/y, y, yz/y)
+            else:  # m.A33 is the largest diagonal term
+                if zz <eps:
+                    axis = FreeCAD.Vector(sqr2, sqr2, 0.0)
+                else:
+                    z = math.sqrt(zz)
+                    axis = FreeCAD.Vector(xz/z, yz/z, z)
     return{"translation": (m.A14,m.A24,m.A34),
            "rotation":    (axis.x, axis.y, axis.z, theta)}
+
+
 
 def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, colorPerVertex = COLOR_PER_VERTEX):
     info_dict = get_info_files(dir_list) # Will (re-) build info files if missing
@@ -492,6 +517,12 @@ def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, c
     x3dNode.set('profile', 'Interchange')
     x3dNode.set('version', '3.3')
     sceneNode = et.SubElement(x3dNode, 'Scene')
+    # Including file with (manually created)  NavInfo, Cameras, etc that should not be overwritten when regenerating assembly model
+    inlineNode = et.SubElement(sceneNode, 'Inline')
+    inlineNode.set('id', assName + '_config')
+    inlineNode.set('url',assName + '_config'+ X3D_EXT)
+    inlineNode.set('nameSpaceName',assName)
+
     defined_parts = {} # for each defined part holds index (for ID generation)
     for i, component in enumerate(components['objects']):
         parts =           components['candidates'][i]
@@ -502,9 +533,13 @@ def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, c
         else:
             print("Component %d does not have any matches, ignoring. Candidates: %s"%(i,str(parts)))
             continue
+        bbox=components['shape'].Shells[i].BoundBox
+        bboxCenter=((bbox.XMax + bbox.XMin)/2,(bbox.YMax + bbox.YMin)/2,(bbox.ZMax + bbox.ZMin)/2)
+        bboxSize=  ( bbox.XMax - bbox.XMin,    bbox.YMax - bbox.YMin,    bbox.ZMax - bbox.ZMin)
+
         transform = matrix4ToX3D(transformation)
-        
-        print("%d: Adding %s"%(i,part))
+        rot=transform['rotation']
+        print("%d: Adding %s, rotation = (x=%f y=%f z=%f theta=%f)"%(i,part,rot[0],rot[1],rot[2],rot[3]))
         if part in defined_parts:
             defined_parts[part] += 1
         else:
@@ -521,6 +556,9 @@ def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, c
         groupNode = et.SubElement(transformNode, 'Group')
         groupNode.set('id','group_'+part+":"+str(defined_parts[part]))
         groupNode.set('class','group_'+part)
+        groupNode.set('bboxSize','%f %f %f'%bboxSize)
+        groupNode.set('bboxCenter','%f %f %f'%bboxCenter)
+        
         if defined_parts[part]:
             groupNode.set('USE', part)
         else:
@@ -530,6 +568,7 @@ def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, c
             inlineNode.set('class','inline_'+part)
 #            inlineNode.set('url',os.path.join(X3D_DIR,part + X3D_EXT))
             inlineNode.set('url',part + X3D_EXT)
+            inlineNode.set('nameSpaceName',part)
 
     oneliner= et.tostring(x3dNode)
     reparsed = minidom.parseString(oneliner)
