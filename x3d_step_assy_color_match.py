@@ -28,6 +28,7 @@ from __future__ import print_function
 @contact:    andrey@elphel.coml
 @deffield    updated: Updated
 '''
+from email import Errors
 __author__ = "Andrey Filippov"
 __copyright__ = "Copyright 2015, Elphel, Inc."
 __license__ = "GPL"
@@ -37,7 +38,7 @@ __email__ = "andrey@elphel.com"
 __status__ = "Development"
 
 import FreeCAD
-import FreeCADGui # just to update cosole output (change to threads later?)
+import FreeCADGui # just to update console output (change to threads later?) - does not seem to work
 import Part
 import os
 import time
@@ -57,6 +58,10 @@ X3D_DIR = "x3d"
 X3D_EXT = ".x3d"
 INFO_EXT = ".pickle"
 PRECISION = 0.0001
+PRECISION_AREA = 0.001
+PRECISION_VOLUME = 0.001
+PRECISION_GYRATION = 0.001
+
 PRECISION_INSIDE = 0.03
 COLOR_PER_VERTEX = True
 if ROOT_DIR[0] == "~":
@@ -333,6 +338,8 @@ def findPartsTransformations(solids, objects, candidates, info_dict, insidePreci
            containing list of colors (tuples) for which there is an area match between assembly element and a part.
            Build element part frame from colors first, then (if not enough) use inertial directions 
     """
+    progress_bar = Base.ProgressIndicator()
+    progress_bar.start("Finding transformations for library parts to match assembly elements ...", len(objects))
     transformations=[]
     for i,s in enumerate(solids):
         tolerance = insidePrecision * s.BoundBox.DiagonalLength # Or should it be fraction of the translation distance?
@@ -396,11 +403,13 @@ def findPartsTransformations(solids, objects, candidates, info_dict, insidePreci
                 else:
                     trans.append(None) # so Transformations have same structure as candidates
                     print("*** Could not find match for part %s"%(cand_name))
-        transformations.append(trans)        
+        transformations.append(trans)
+        progress_bar.next() # True) # True - enable ESC to abort
+    progress_bar.stop()        
     return transformations
 
     
-def colorMatchCandidate(assy_object, candidates, info_dict, precision = PRECISION):
+def colorMatchCandidate(assy_object, candidates, info_dict, precision = PRECISION_AREA):
     """
     @return dictionary partName -> list of colors (as 3-tuples)
     """
@@ -428,11 +437,27 @@ def colorMatchCandidate(assy_object, candidates, info_dict, precision = PRECISIO
             if len(colors) == max_match:
                 colored_candidates[candidate]=colors
     return colored_candidates
-
+"""
+PRECISION_AREA = 0.02
+PRECISION_VOLUME = 0.03
+PRECISION_INSIDE = 0.03
+"""
 #components=scan_step_parts.findComponents("/home/andrey/parts/0393/export/nc393_07_flat_noassy.stp")
-def findComponents(assembly, precision_inside = PRECISION_INSIDE, precision = PRECISION):
+def findComponents(assembly,
+                   precision_area =   PRECISION_AREA,
+                   precision_volume = PRECISION_VOLUME,
+                   precision_gyration = PRECISION_GYRATION,
+                   precision_inside = PRECISION_INSIDE,
+                   precision =        PRECISION,
+                   show_best =        True):
     """
     @param assembly - may be file path (different treatment for Gui/no-Gui, Shape or doc.Objects
+    @param precision_area =   PRECISION_AREA - relative precision in surface area calculations
+    @param precision_volume = PRECISION_VOLUME - relative precision in volume calculations
+    @param precision_gyration = PRECISION_GYRATION - relative precision in radius of gyration calculations
+    @param precision_inside = PRECISION_INSIDE - relative precision in calculations of point inside/outside of a solid
+    @param precision =        PRECISION - precision in vector calculation
+    @param show_best - calculate and show the best relative match for each parameter
     """
     start_time=time.time()
     print("Getting parts database")
@@ -458,39 +483,70 @@ def findComponents(assembly, precision_inside = PRECISION_INSIDE, precision = PR
     else:    
         objects,solids = create_file_info(assembly, aname)
 #    print (objects)
+    progress_bar = Base.ProgressIndicator()
+    progress_bar.start("Looking for matching parts for each of the assembly element ...", len(objects))
+
     candidates=[]
     for i,o in enumerate(objects):
 #        try:
 #            FreeCADGui.updateGui()
 #        except:
 #            pass
-#        print (i,o)
-                        
+        print (i,o)
         this_candidates = []
+        list_errors=[]
         rg=o['principal']['RadiusOfGyration']
-        rgp = precision*math.sqrt(rg[0]**2 + rg[1]**2 + rg[2]**2)
-        vp = o['volume']*precision
-        ap = o['area']*precision
+        rg_av = math.sqrt(rg[0]**2 + rg[1]**2 + rg[2]**2)
+        rgp = precision_gyration * rg_av
+        vp = o['volume']*precision_volume
+        ap = o['area']*precision_area
         for n in info_dict:
             co = info_dict[n][0]
-            if ((abs(o['volume'] - co['volume']) < vp) and
-                (abs(o['area'] -   co['area']) <   ap) and
-                (abs(rg[0] -       co['principal']['RadiusOfGyration'][0]) <   ap) and
-                (abs(rg[1] -       co['principal']['RadiusOfGyration'][1]) <   ap) and
-                (abs(rg[2] -       co['principal']['RadiusOfGyration'][2]) <   ap)):
+            errors = (abs(o['volume'] - co['volume']),
+                      abs(o['area'] -   co['area']),
+                      abs(rg[0] -       co['principal']['RadiusOfGyration'][0]),
+                      abs(rg[1] -       co['principal']['RadiusOfGyration'][1]),
+                      abs(rg[2] -       co['principal']['RadiusOfGyration'][2]),
+                      )
+            if show_best:
+                list_errors.append(errors)
+#            if ((abs(o['volume'] - co['volume']) < vp) and
+#                (abs(o['area'] -   co['area']) <   ap) and
+#                (abs(rg[0] -       co['principal']['RadiusOfGyration'][0]) <   rgp) and
+#                (abs(rg[1] -       co['principal']['RadiusOfGyration'][1]) <   rgp) and
+#                (abs(rg[2] -       co['principal']['RadiusOfGyration'][2]) <   rgp)):
+
+            if ((errors[0] < vp) and
+                (errors[1] < ap) and
+                (errors[2] < rgp) and
+                (errors[3] < rgp) and
+                (errors[4] < rgp)):
                 this_candidates.append(n)
+        if show_best:
+            weighted_errors = [errors[0]/vp + errors[1]/ap + (errors[2] + errors[3] + errors[4])/rgp for errors in list_errors]
+            best_index = weighted_errors.index(min(weighted_errors))
+            errors = list_errors[best_index]
+            print ("Best match with %s, relative errors: dV=%f, dS=%f, dRG1=%f, dRG2=%f, dRG3=%f"%(
+                                                                                info_dict.keys()[best_index],
+                                                                                errors[0]/o['volume'],
+                                                                                errors[1]/o['area'],
+                                                                                errors[2]/rg_av,
+                                                                                errors[3]/rg_av,
+                                                                                errors[4]/rg_av))        
         # Filter candidates by number of color areas matched
-        colored_candidates=colorMatchCandidate(o, this_candidates, info_dict, precision)
+        colored_candidates=colorMatchCandidate(o, this_candidates, info_dict, precision_area)
         try:
             num_ass_obj_colors = len(o["colorCenters"])
         except:
             num_ass_obj_colors = 0
-#        print ("%d :colors: %d candidates: %s, colored_candidates: %s"%(i,num_ass_obj_colors, str(this_candidates), str(colored_candidates)))
+        print ("%d :colors: %d candidates: %s, colored_candidates: %s"%(i,num_ass_obj_colors, str(this_candidates), str(colored_candidates)))
         candidates.append(colored_candidates)
-        
+        progress_bar.next() # True) # True - enable ESC to abort
+
+    progress_bar.stop()
     transformations = findPartsTransformations(solids, objects, candidates, info_dict, precision_inside, precision)
     #Each part can be in two orientations - check overlap after loading actual parts
-    return {"Solids":solids,"objects":objects,"candidates":candidates,"transformations":transformations}
+    return {"solids":solids,"objects":objects,"candidates":candidates,"transformations":transformations}
 
 def ortho3(v0,v1):
     v0.normalize()
@@ -527,7 +583,7 @@ def ppToMatrix(pp,
     for color in colors:
 ##        print ("colorCenters=", colorCenters[color]['center']," area=",colorCenters[color]['area'])        
         color_vectors.append(FreeCAD.Vector(colorCenters[color]['center']) - t)
-#    print ("color_vectors=",color_vectors)        
+    print ("color_vectors=",color_vectors)        
 ##    print ("color_vectors=",color_vectors, "t=",t)        
     if color_vectors: # find the longest one
         lengths = [v.Length for v in color_vectors]
@@ -536,7 +592,7 @@ def ppToMatrix(pp,
         if l > eps:
             vectors.append(v.normalize())
     
-    if color_vectors: # now find the vector having maximal orthogonal component to v[0]
+    if vectors and color_vectors: # now find the vector having maximal orthogonal component to v[0]
         lengths = [v.cross(vectors[0]).Length for v in color_vectors]
         l = max(lengths)
         v = color_vectors.pop(lengths.index(l))
@@ -610,10 +666,15 @@ def list_parts_offsets():
         for j,o in enumerate(info_files[name]):
             d = math.sqrt(o["center"][0]**2 + o["center"][1]**2 + o["center"][2]**2)
             if j == 0:
-                print("%3i:"%(i), end="")
+                print("%4d:"%(i), end="")
             else:
-                print("    ", end="")
+                print("     ", end="")
             print("%s offset = %6.1f"%(name, d))
+
+def list_parts():
+    info_files = get_info_files()
+    for i, name in enumerate(info_files):
+        print ("%4d '%s': %d solids:%s"%(i,name,len(info_files[name]),str(info_files[name])))
 
 
 # X3D Export
@@ -647,7 +708,7 @@ def getShapeNode(vertices, faces, diffuseColor = None, main_color_index = 0, col
         materialNode.set('diffuseColor', "%f %f %f" % tuple(diffuseColor[main_color_index * 3: main_color_index * 3 + 3]))
     return shapeNode
 
-def exportX3D(objects, filepath, colorPerVertex):
+def exportX3D(objects, filepath,  id="part", colorPerVertex=False):
     """Export given list of objects to a X3D file.
 
     Each object is a dictionary in this form:
@@ -657,17 +718,19 @@ def exportX3D(objects, filepath, colorPerVertex):
         color : [R, G, B,...]            # number range is 0-1.0, exactly 3 elements for a single color, 3*N for per-vertex colors
     }
     """
+    progress_bar = Base.ProgressIndicator()
+    progress_bar.start("Saving objects to X3D file %s ..."%(filepath), len(objects))
 
     x3dNode = et.Element('x3d')
     x3dNode.set('profile', 'Interchange')
     x3dNode.set('version', '3.3')
     sceneNode = et.SubElement(x3dNode, 'Scene')
-    progress_bar = Base.ProgressIndicator()
-    progress_bar.start("Saving objects to X3D file %s ..."%(filepath), len(objects))
+    groupNode = et.SubElement(sceneNode, 'Group')
+    groupNode.set('id', id)
 
     for o in objects:
         shapeNode = getShapeNode(o["points"], o["faces"], o["color"], o["main_color_index"], colorPerVertex)
-        sceneNode.append(shapeNode)
+        groupNode.append(shapeNode)
         progress_bar.next() # True) # True - enable ESC to abort
         
     oneliner= et.tostring(x3dNode)
@@ -744,10 +807,12 @@ def prepareX3dExport(freecadObjects, fname=""):
     return objects
 
 def generatePartsX3d(dir_list = DIR_LIST, colorPerVertex = COLOR_PER_VERTEX):
+    start_time=time.time()
     info_dict= get_info_files(dir_list) # Will (re-) build info files if missing
     step_list = get_step_list(dir_list) #relative to ROOT_DIR
     if not X3D_DIR in os.listdir(ROOT_DIR):
         os.mkdir(os.path.join(ROOT_DIR,X3D_DIR))
+    numExported=0    
     for step_file in step_list:
         partName,_ =  os.path.splitext(os.path.basename(step_file))
         x3dFile = os.path.join(ROOT_DIR,X3D_DIR,partName + X3D_EXT)
@@ -757,9 +822,11 @@ def generatePartsX3d(dir_list = DIR_LIST, colorPerVertex = COLOR_PER_VERTEX):
             doc = FreeCAD.activeDocument()
             doc.Label = partName
             x3d_objects = prepareX3dExport(doc.Objects, step_file) # step_file needed just for progress bar
-            exportX3D(x3d_objects, x3dFile, colorPerVertex)
+            exportX3D(x3d_objects, x3dFile, id="part_"+partName, colorPerVertex=colorPerVertex)
             FreeCAD.closeDocument(doc.Name)
             FreeCADGui.updateGui()
+            numExported += 1
+    print("Exported %d files as X3D in @%f seconds, "%(numExported, time.time()-start_time))
 
 def matrix4ToX3D(m, eps=0.000001): #assuming 3x3 matrix is pure rotational
     axis=FreeCAD.Vector(m.A32-m.A23, m.A13-m.A31, m.A21-m.A12)
@@ -805,11 +872,27 @@ def matrix4ToX3D(m, eps=0.000001): #assuming 3x3 matrix is pure rotational
 
 
 
-def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, colorPerVertex = COLOR_PER_VERTEX):
+def generateAssemblyX3d(assembly_path,
+                        components =         None,
+                        dir_list =           DIR_LIST,
+                        colorPerVertex =     COLOR_PER_VERTEX,
+                        precision_area =     PRECISION_AREA,
+                        precision_volume =   PRECISION_VOLUME,
+                        precision_gyration = PRECISION_GYRATION,
+                        precision_inside =   PRECISION_INSIDE,
+                        precision =          PRECISION
+                        ):
+    start_time=time.time()
     info_dict = get_info_files(dir_list) # Will (re-) build info files if missing
     generatePartsX3d(dir_list = DIR_LIST, colorPerVertex = COLOR_PER_VERTEX) # Will only run if files are not there yet
     if not components:
-        components = findComponents(assembly_path, precision_inside = PRECISION_INSIDE, precision = PRECISION)
+        components = findComponents(assembly_path,
+                                    precision_area =     precision_area,
+                                    precision_volume =   precision_volume,
+                                    precision_gyration = precision_gyration,
+                                    precision_inside =   precision_inside,
+                                    precision =          precision,
+                                    show_best =          False)
     assName,_ =  os.path.splitext(os.path.basename(assembly_path))
     x3dFile = os.path.join(ROOT_DIR,X3D_DIR,assName + X3D_EXT) # currently in the same directory as parts
     x3dNode = et.Element('x3d')
@@ -880,6 +963,7 @@ def generateAssemblyX3d(assembly_path, components = None, dir_list = DIR_LIST, c
     print ("Writing assembly to %s"%(x3dFile))
     with open(x3dFile, "wr") as f:
         f.write(reparsed.toprettyxml(indent="  "))
+    print("Assembly %s exported as X3D file in @%f seconds, "%(x3dFile, time.time()-start_time))
 
 
 
