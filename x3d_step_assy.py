@@ -50,14 +50,15 @@ from xml.dom import minidom
 from FreeCAD import Base
 
 from PySide import QtCore, QtGui
+from ConfigParser import SafeConfigParser
 import sys
 import traceback
 
-
-ROOT_DIR = '~/parts/0393/export1'
-STEP_PARTS='~/parts/0393/export1/step_parts'
+CONFIG_PATH= "~/.FreeCAD/x3d_step_assy.ini"
+ROOT_DIR = '~/parts/0393/export'
+STEP_PARTS='~/parts/0393/export/step_parts'
 #DIR_LIST = ["parts","subassy_flat"]
-ASSEMBLY_PATH = None
+ASSEMBLY_PATH = ""
 INFO_DIR = "info"
 X3D_DIR = "x3d"
 X3D_EXT = ".x3d"
@@ -66,11 +67,14 @@ PRECISION = 0.0001
 PRECISION_AREA = 0.001
 PRECISION_VOLUME = 0.001
 PRECISION_GYRATION = 0.001
-
 PRECISION_INSIDE = 0.03
+
 COLOR_PER_VERTEX = True
 
 COMPONENTS = None # to hold data structure that is long to build so it will survive if the macro crashes
+if CONFIG_PATH[0] == "~":
+    CONFIG_PATH = os.path.join(os.path.expanduser('~'),CONFIG_PATH[2:])
+
 if ROOT_DIR[0] == "~":
     ROOT_DIR = os.path.join(os.path.expanduser('~'),ROOT_DIR[2:])
 if STEP_PARTS[0] == "~":
@@ -88,22 +92,17 @@ def get_step_list(dir_listdirs):
        for root, _, files in os.walk(dir_path, topdown=True, onerror=None, followlinks = True)
         for f in files if f.endswith((".step",".stp",".STP",".STEP"))]
         
-"""    
-def get_step_list(dir_list):
-    step_files = []
-    for rpath in dir_list:
-        apath = os.path.join(ROOT_DIR,rpath)
-        try:
-            step_files += [os.path.join(rpath, f) for f in os.listdir(apath) if os.path.isfile(os.path.join(apath, f)) and f.endswith((".step",".stp"))]
-        except:
-            print ("Failed to add files from %s"%apath)
-    return step_files
-"""
 
 def vector_to_tuple(v):
     return((v.x,v.y,v.z))
 
 def repair_solids_from_shells(shape):
+    """
+    Some imported object from STEP files turned out to be open shells.
+    Convert them to solids with FreeCAD
+    @param shape - FreeCAD Shape
+    @return a list of FreeCAD solids
+    """
     solids = shape.Solids
     new_solids = []
     for sh in shape.Shells:
@@ -116,8 +115,14 @@ def repair_solids_from_shells(shape):
             new_solids.append(Part.Solid(sh))
     return new_solids
 
-#Find Vertex indices with maximal/minima  X,Y,Z to check orientation(Still does not check for holes - Add them somehow?
+#Find Vertex indices with maximal/minimal  X,Y,Z to check orientation(Still does not check for holes - Add them somehow?
 def verticesToCheck(solid):
+    """
+    Create a list of 18 vertices having maximal/minimal X, Y, Z (and their +/- pairs).
+    These vertices will be later tested to be inside (with certain precision) the assembly part
+    @param solid - A Solid object
+    @return list of 18 3-tuples (x,y,z) 
+    """
     l=[[],[],[],[],[],[],[],[],[]]
     for v in solid.Vertexes:
        l[0].append(v.X)
@@ -140,6 +145,17 @@ def verticesToCheck(solid):
     return lv
 
 def create_file_info_nogui(shape, fname=""):
+    """
+    A no-Gui version of the create_file_info, rather useless now as the color
+    is critical for the program. Using FreeCAD GGUI significantly slows down
+    the program and prevents it from running in a true batch mode. It seems
+    possible to hack Face.Tolerance property (unused so far) and import STEP
+    files saving colors in this property.
+    @param shape - FreeCAD Shape, containing one or more solids
+    @param fname - source file path
+    @return a pair of a list of info for each solid (as a dictionary) and a
+              list of solids in the shape
+    """
     objects = []
     #repairing open shells
     solids = shape.Solids
@@ -171,6 +187,15 @@ def create_file_info_nogui(shape, fname=""):
 
 
 def create_file_info(freecadObjects, fname=""):
+    """
+    Collect information about each part/solid to be used for comparison between
+    assembly objects and parts
+    @param shape - FreeCAD Shape, containing one or more solids
+    @param fname - source file path
+    @return a pair of a list of info for each solid (as a dictionary) and a
+              list of solids in the shape
+    """
+    
     if not "Gui" in dir(FreeCAD):
         return create_file_info_nogui(freecadObjects, fname)
     # Count all shells in all objects
@@ -213,7 +238,6 @@ def create_file_info(freecadObjects, fname=""):
             if (len(dc) == 1) and (len(o.Shape.Faces)>1):
                 dc= dc * len(o.Shape.Faces)
             colorCenters=[[0.0,0.0,0.0,0.0] for c in col_list] # SX,SY,SZ,S0
-#            for clr,face in zip(o.ViewObject.DiffuseColor, o.Shape.Faces):
             for clr,face in zip(dc, o.Shape.Faces):
                 clr_index = col_dict[clr]
                 m = face.Area
@@ -231,7 +255,6 @@ def create_file_info(freecadObjects, fname=""):
                                                   colorCenters[clr_index][2]/colorCenters[clr_index][3]),
                                         "area":   colorCenters[clr_index][3]}
 #                print ("color_center_area[%s] = %s"%(str(clr), str(color_center_area[clr])))
-   
                         
             for i, s in enumerate(solids):
                 pp=s.PrincipalProperties
@@ -260,6 +283,17 @@ def create_file_info(freecadObjects, fname=""):
     return (objects,allSolids)
   
 def get_info_files_nogui(dir_list = None):
+    """
+    a no-gui version of get_info_files()
+    @param dir_list - list of directories (usually a single-element) to scan for
+                      STEP part models (including subdirectories). Non-existing
+                      directories in the list are OK, they will be silently skipped.
+    @return a dictionary with part names as keys and info parameters lists of
+            dictionaries created by create_file_info() as values
+            Each part usually has just one solid, but may have more than one, in that
+            case only the largest (by volume) is used for identification in the
+            assembly, and it is returned at index 0 in the result
+    """
     if dir_list is None:
         dir_list = [STEP_PARTS]
     start_time=time.time()
@@ -304,6 +338,19 @@ def get_info_files_nogui(dir_list = None):
     return info_dict
 
 def get_info_files(dir_list = None):
+    """
+    Get information about each part collected with create_file_info() function
+    Generate this information for each part that does not have it or have
+    obsolete (older than STEP file) one.
+    @param dir_list - list of directories (usually a single-element) to scan for
+                      STEP part models (including subdirectories). Non-existing
+                      directories in the list are OK, they will be silently skipped.
+    @return a dictionary with part names as keys and info parameters lists of
+            dictionaries created by create_file_info() as values
+            Each part usually has just one solid, but may have more than one, in that
+            case only the largest (by volume) is used for identification in the
+            assembly, and it is returned at index 0 in the result
+    """
     if dir_list is None:
         dir_list = [STEP_PARTS]
     if not "Gui" in dir(FreeCAD):
@@ -367,16 +414,31 @@ def get_info_files(dir_list = None):
 
 def findPartsTransformations(solids, objects, candidates, info_dict, insidePrecision = PRECISION_INSIDE, precision = PRECISION):
     """
-    @param candidates - list (per assembly element) of dictionaries indexed by part name (usually just one) one,
-           containing list of colors (tuples) for which there is an area match between assembly element and a part.
-           Build element part frame from colors first, then (if not enough) use inertial directions 
+    Find transformation (translation+rotation) matrices for each assembly part and each candidate part
+    @param solids - list of solids, they are used to check that the test part vertices are almost inside
+                    Number of elements in solids, objects, candidates  should match
+    @param objects - list of the solid properties (as dictionaries made by create_file_info()) of the assembly
+                    elements.                 
+    @param candidates - list (per assembly element) of dictionaries indexed by part name (usually just one),
+                        containing list of colors (tuples) for which there is an area match between assembly
+                        element and a part. Build element part frame from colors first, then (if not enough)
+                        use inertial directions.
+    @param info_dict - dictionary (part name as a key) of lists (first element is the largest by volume) of
+                       part solid properties used for matching
+    @param inside_precision - precision for determining if the test points (available for each part) get inside
+                              the assembly element. Currently as a fraction of the object bounding box diagonal,
+                              but maybe it is better to use fraction of the translation distance plus diagonal?
+    @param precision - relative precision for matrix/vector calculations (determining co-linear/co-planar objects                   
+    @return a list (per assembly solid) of dictionaries part_name -> 4x4 transformation matrix (not yet tested
+                              with multiple fits
+            
     """
     progress_bar = Base.ProgressIndicator()
     progress_bar.start("Finding transformations for library parts to match assembly elements ...", len(objects))
     transformations=[]
     for i,s in enumerate(solids):
         tolerance = insidePrecision * s.BoundBox.DiagonalLength # Or should it be fraction of the translation distance?
-        trans=[]
+        trans={}
         print ("%d findPartsTransformations:"%(i))
         for cand_name in candidates[i]:
             co = info_dict[cand_name][0] # First solid in the candidate part file 
@@ -403,7 +465,8 @@ def findPartsTransformations(solids, objects, candidates, info_dict, insidePreci
                         break
                 else:
                     print("%d: %s - got transformation with orientation %d"%(i,cand_name, orient))
-                    trans.append(matrix_part_assy)
+#                    trans.append(matrix_part_assy)
+                    trans[cand_name] = matrix_part_assy
                     break
             else:
                 print("Could not find match for part %s, trying manually around that vertex"%(cand_name))
@@ -431,19 +494,28 @@ def findPartsTransformations(solids, objects, candidates, info_dict, insidePreci
                                 break # no luck
                     else:
                         print("%d: %s - finally got transformation with orientation %d"%(i,cand_name, orient))
-                        trans.append(matrix_part_assy)
+#                        trans.append(matrix_part_assy)
+                        trans[cand_name] = matrix_part_assy
                         break
                 else:
-                    trans.append(None) # so Transformations have same structure as candidates
+#                    trans.append(None) # so Transformations have same structure as candidates, and it is now dictionary
                     print("*** Could not find match for part %s"%(cand_name))
         transformations.append(trans)
-        progress_bar.next() # True) # True - enable ESC to abort
+        progress_bar.next() # True)
     progress_bar.stop()        
     return transformations
 
     
 def colorMatchCandidate(assy_object, candidates, info_dict, precision = PRECISION_AREA):
     """
+    Select colored features among the parts candidates by comparing total area per color
+    with the candidates so if some feature on the assembly object and the part have
+    different colors, the others can still be used for orientation identification.
+    Parts w/o matching color information can only be oriented by axes of gyration
+    @param  assy_object - a dictionary of the parameters of the assembly object
+    @param candidates - a list of part name that fit this assembly object without color
+                        properties
+    @param info_dict - dictionary of parameters for all parts (indexed by part names)                    
     @return dictionary partName -> list of colors (as 3-tuples)
     """
     colored_candidates={}
@@ -470,12 +542,7 @@ def colorMatchCandidate(assy_object, candidates, info_dict, precision = PRECISIO
             if len(colors) == max_match:
                 colored_candidates[candidate]=colors
     return colored_candidates
-"""
-PRECISION_AREA = 0.02
-PRECISION_VOLUME = 0.03
-PRECISION_INSIDE = 0.03
-"""
-#components=scan_step_parts.findComponents("/home/andrey/parts/0393/export/nc393_07_flat_noassy.stp")
+
 def findComponents(assembly,
                    precision_area =   PRECISION_AREA,
                    precision_volume = PRECISION_VOLUME,
@@ -484,13 +551,14 @@ def findComponents(assembly,
                    precision =        PRECISION,
                    show_best =        True):
     """
-    @param assembly - may be file path (different treatment for Gui/no-Gui, Shape or doc.Objects or None - will use ActiveDocument().Objects
+    Match each assembly element with a part, provide the transformation matrix
+    @param assembly - may be file path (different treatment for Gui/no-Gui, Shape or doc.Objects or "" - will use ActiveDocument().Objects
     @param precision_area =   PRECISION_AREA - relative precision in surface area calculations
     @param precision_volume = PRECISION_VOLUME - relative precision in volume calculations
     @param precision_gyration = PRECISION_GYRATION - relative precision in radius of gyration calculations
     @param precision_inside = PRECISION_INSIDE - relative precision in calculations of point inside/outside of a solid
     @param precision =        PRECISION - precision in vector calculation
-    @param show_best - calculate and show the best relative match for each parameter
+    @param show_best - calculate and show the best relative match for each parameter - can be used to fine-tune PRECISION* parameters
     """
     FreeCAD.Console.PrintMessage("findComponents(): Getting parts database");
     global COMPONENTS
@@ -499,7 +567,7 @@ def findComponents(assembly,
     info_dict = get_info_files()
     FreeCAD.Console.PrintMessage("findComponents(): Got parts database");
     aname = ""
-    if not assembly:
+    if not assembly: # including "" string
         assembly = FreeCAD.activeDocument().Objects
         FreeCAD.Console.PrintMessage("Using %d solids in the active document @%f"%(len(assembly), time.time()-start_time));
     if isinstance (assembly, (str,unicode)):
@@ -965,15 +1033,12 @@ def generateAssemblyX3d(assembly_path,
 
     defined_parts = {} # for each defined part holds index (for ID generation)
     for i, component in enumerate(components['objects']):
-        parts =           components['candidates'][i]
-        transformations = components['transformations'][i] # same structure as candidates, missing - 'None'
-        for transformation, part in zip(transformations,parts):
-            if transformation:
-                break
-        else:
-            print("Component %d does not have any matches, ignoring. Candidates: %s"%(i,str(parts)))
+        transformations = components['transformations'][i] # same structure as candidates, missing - {}'None'
+        if not transformations:
+            print("Component %d does not have any matches, ignoring. Candidates: %s"%(i,str(components['candidates'][i])))
             continue
-#        bbox=components['shape'].Shells[i].BoundBox
+        part = transformations.keys()[0]
+        transformation = transformations[part]    
         bbox=components['solids'][i].BoundBox
         bboxCenter=((bbox.XMax + bbox.XMin)/2,(bbox.YMax + bbox.YMin)/2,(bbox.ZMax + bbox.ZMin)/2)
         bboxSize=  ( bbox.XMax - bbox.XMin,    bbox.YMax - bbox.YMin,    bbox.ZMax - bbox.ZMin)
@@ -1044,10 +1109,18 @@ def run():
 ########################################################################
 class X3dStepAssyDialog(QtGui.QWidget):
     """"""
-    assembly_path =   None
-    x3d_root_path =   None
-    step_parts_path = None
-    log_file =        None
+    assembly_path =   ""
+    x3d_root_path =   ""
+    step_parts_path = ""
+    log_file =        ""
+    
+    
+    precision =          0.0001
+    precision_area =     0.001
+    precision_volume =   0.001
+    precision_gyration = 0.001
+    precision_inside =   0.03
+
     #----------------------------------------------------------------------
     def get_path_text(self, path, mode = None):
         if path:
@@ -1059,11 +1132,70 @@ class X3dStepAssyDialog(QtGui.QWidget):
         else:
             return "not set"
                  
-        
-    def __init__(self, assembly_path=None, x3d_root_path=None, step_parts_path = None):
-        self.assembly_path =   assembly_path
-        self.x3d_root_path =   x3d_root_path
-        self.step_parts_path = step_parts_path
+    def saveSettings(self):
+        config = SafeConfigParser()
+        config.read(CONFIG_PATH) # OK not to have any file
+        try:
+            config.add_section('paths')
+        except:
+            pass # OK if the section already exists    
+        config.set('paths', 'assembly_path',   self.assembly_path)
+        config.set('paths', 'x3d_root_path',   self.x3d_root_path)
+        config.set('paths', 'step_parts_path', self.step_parts_path)
+        config.set('paths', 'log_file',        self.log_file)
+        try:
+            config.add_section('precisions')
+        except:
+            pass # OK if the section already exists    
+        config.set('precisions', 'precision',          '%f'%(self.precision))
+        config.set('precisions', 'precision_area',     '%f'%(self.precision_area))
+        config.set('precisions', 'precision_volume',   '%f'%(self.precision_volume))
+        config.set('precisions', 'precision_gyration', '%f'%(self.precision_gyration))
+        config.set('precisions', 'precision_inside',   '%f'%(self.precision_inside))
+        with open(CONFIG_PATH, 'w') as f:
+            config.write(f)
+    def restoreSettings(self):
+        config = SafeConfigParser()
+        config.read(CONFIG_PATH) # OK not to have any file
+        try:
+            self.assembly_path =   config.get('paths', 'assembly_path')
+        except:
+            self.assembly_path =   ASSEMBLY_PATH
+        try:         
+            self.x3d_root_path =   config.get('paths', 'x3d_root_path')
+        except:
+            self.x3d_root_path =   ROOT_DIR
+        try:            
+            self.step_parts_path = config.get('paths', 'step_parts_path')
+        except:
+            self.step_parts_path = STEP_PARTS
+        try:     
+            self.log_file =        config.get('paths', 'log_file')
+        except:
+            self.log_file =        ""
+        try:     
+            self.precision=          float(config.get('precisions', 'precision'))
+        except:
+            self.precision=          PRECISION
+        try:     
+            self.precision_area=     float(config.get('precisions', 'precision_area'))
+        except:
+            self.precision_area=     PRECISION_AREA
+        try:     
+            self.precision_volume=   float(config.get('precisions', 'precision_volume'))
+        except:
+            self.precision_volume=   PRECISION_VOLUME
+        try:     
+            self.precision_gyration= float(config.get('precisions', 'precision_gyration'))
+        except:
+            self.precision_gyration= PRECISION_GYRATION
+        try:     
+            self.precision_inside=   float(config.get('precisions', 'precision_inside'))
+        except:
+            self.precision_inside=   PRECISION_INSIDE
+
+    def __init__(self):
+        self.restoreSettings()
         """Constructor"""
         QtGui.QWidget.__init__(self) # ,parent=parent)
  
@@ -1086,36 +1218,83 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.step_parts_btn.setToolTip("Select directory containing all the parts STEP models. Will scan sub-directories")
         self.help_btn =       QtGui.QPushButton("?")
         self.execute_btn  =   QtGui.QPushButton("Execute macro (may take hours!)")
+        
+        label_precision =           QtGui.QLabel("precision")
+        label_precision_area =      QtGui.QLabel("precision_area")
+        label_precision_volume =    QtGui.QLabel("precision_volume")
+        label_precision_gyration =  QtGui.QLabel("precision_gyration")
+        label_precision_inside =    QtGui.QLabel("precision_inside")
+
+        self.lineedit_precision =          QtGui.QLineEdit()
+        self.lineedit_precision_area =     QtGui.QLineEdit()
+        self.lineedit_precision_volume =   QtGui.QLineEdit()
+        self.lineedit_precision_gyration = QtGui.QLineEdit()
+        self.lineedit_precision_inside =   QtGui.QLineEdit()
+        
+        self.lineedit_precision.setToolTip         ("Relative precision in matrix/vector calculations")
+        self.lineedit_precision_area.setToolTip    ("Relative precision when comparing objects surface area")
+        self.lineedit_precision_volume.setToolTip  ("Relative precision when comparing objects volume")
+        self.lineedit_precision_gyration.setToolTip("Relative precision when comparing objects radii of gyration")
+        self.lineedit_precision_inside.setToolTip  ("Relative precision when determining if part vertices fit into assembly object")
+
+        self.lineedit_precision.setText          ('%f'%(self.precision))
+        self.lineedit_precision_area.setText     ('%f'%(self.precision_area))
+        self.lineedit_precision_volume.setText   ('%f'%(self.precision_volume))
+        self.lineedit_precision_gyration.setText ('%f'%(self.precision_gyration))
+        self.lineedit_precision_inside.setText   ('%f'%(self.precision_inside))
+        
 
         self.log_file_btn.clicked.connect(self.selectLogFile)
         self.assembly_btn.clicked.connect(self.selectAssembly)
         self.x3d_root_btn.clicked.connect(self.selectX3dRoot)
         self.step_parts_btn.clicked.connect(self.selectStepParts)
+        
+        self.lineedit_precision.editingFinished.connect         (self.editedPrecision)
+        self.lineedit_precision_area.editingFinished.connect    (self.editedPrecisionArea)
+        self.lineedit_precision_volume.editingFinished.connect  (self.editedPrecisionVolume)
+        self.lineedit_precision_gyration.editingFinished.connect(self.editedPrecisionGyration)
+        self.lineedit_precision_inside.editingFinished.connect  (self.editedPrecisionInside)
+
         self.help_btn.clicked.connect(self.showHelp)
         self.execute_btn.clicked.connect(self.executeMacro)
  
         # layout widgets
         layout = QtGui.QGridLayout() # parent=parent)
         layout.setColumnStretch(1,1)
-        layout.addWidget(label_assembly,      0, 0)
-        layout.addWidget(self.assembly_btn,   0, 1)
+        layout.addWidget(label_assembly,                   0, 0)
+        layout.addWidget(self.assembly_btn,                0, 1)
 
-        layout.addWidget(label_x3d_root_btn,  1, 0)
-        layout.addWidget(self.x3d_root_btn,   1, 1)
+        layout.addWidget(label_x3d_root_btn,               1, 0)
+        layout.addWidget(self.x3d_root_btn,                1, 1)
 
-        layout.addWidget(label_step_parts,    2, 0)
-        layout.addWidget(self.step_parts_btn, 2, 1)
+        layout.addWidget(label_step_parts,                 2, 0)
+        layout.addWidget(self.step_parts_btn,              2, 1)
 
-        layout.addWidget(label_log_file,      3, 0)
-        layout.addWidget(self.log_file_btn,   3, 1)
-
-        layout.addWidget(self.help_btn,       4, 0)
-        layout.addWidget(self.execute_btn,    4, 1)
+        layout.addWidget(label_log_file,                   3, 0)
+        layout.addWidget(self.log_file_btn,                3, 1)
+        
+        layout.addWidget(label_precision,                  4, 0)
+        layout.addWidget(self.lineedit_precision,          4, 1)
+        
+        layout.addWidget(label_precision_area,             5, 0)
+        layout.addWidget(self.lineedit_precision_area,     5, 1)
+        
+        layout.addWidget(label_precision_volume,           6, 0)
+        layout.addWidget(self.lineedit_precision_volume,   6, 1)
+        
+        layout.addWidget(label_precision_gyration,         7, 0)
+        layout.addWidget(self.lineedit_precision_gyration, 7, 1)
+        
+        layout.addWidget(label_precision_inside,           8, 0)
+        layout.addWidget(self.lineedit_precision_inside,   8, 1)
+        
+        layout.addWidget(self.help_btn,                    9, 0)
+        layout.addWidget(self.execute_btn,                 9, 1)
         
         self.setLayout(layout)
  
         # set the position and size of the window
-        self.setGeometry(100, 100, 300, 100)
+        self.setGeometry(100, 100, 300, 200)
  
         self.setWindowTitle("STEP assembly to X3D converter")
  
@@ -1128,7 +1307,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
                                                            "Select log file (or cancel to use stdout)",
                                                            prompt_file)
         self.log_file_btn.setText(self.get_path_text(self.log_file, "log"))
-
+        self.saveSettings()
     
     
     def selectAssembly(self):
@@ -1137,18 +1316,75 @@ class X3dStepAssyDialog(QtGui.QWidget):
                                                                   self.assembly_path,
                                                                   "STEP files (*.step *.stp *.STEP *.STP)")
         self.assembly_btn.setText(self.get_path_text(self.assembly_path, True))
+        self.saveSettings()
         
     def selectX3dRoot(self):
         self.x3d_root_path = QtGui.QFileDialog.getExistingDirectory(self,
                                                                     "Select working directory for STEP->x3d conversion",
                                                                      self.x3d_root_path)
         self.x3d_root_btn.setText(self.get_path_text(self.x3d_root_path))
+        self.saveSettings()
     
     def selectStepParts(self):
         self.step_parts_path = QtGui.QFileDialog.getExistingDirectory(self,
                                                                     "Select working directory for STEP->x3d conversion",
                                                                      self.step_parts_path)
         self.step_parts_btn.setText(self.get_path_text(self.step_parts_path))
+        self.saveSettings()
+        
+    def editedPrecision(self):
+        txt = self.lineedit_precision.text()
+        try:
+            number = float(txt)
+            self.precision = number
+        except Exception:
+            pass
+        self.lineedit_precision.setText('%f'%(self.precision))
+        self.saveSettings()
+        
+    def editedPrecisionArea(self):
+        txt = self.lineedit_precision_area.text()
+        try:
+            number = float(txt)
+            self.precision_area = number
+        except Exception:
+            pass
+        self.lineedit_precision_area.setText('%f'%(self.precision_area))
+        self.saveSettings()
+        
+    def editedPrecisionVolume(self):
+        txt = self.lineedit_precision_volume.text()
+        try:
+            number = float(txt)
+            self.precision_volume = number
+        except Exception:
+            pass
+        self.lineedit_precision_volume.setText('%f'%(self.precision_volume))
+        self.saveSettings()
+        
+    def editedPrecisionGyration(self):
+        txt = self.lineedit_precision_gyration.text()
+        try:
+            number = float(txt)
+            self.precision_gyration = number
+        except Exception:
+            pass
+        self.lineedit_precision_gyration.setText('%f'%(self.precision_gyration))
+        self.saveSettings()
+        
+    def editedPrecisionInside(self):
+        txt = self.lineedit_precision_inside.text()
+        try:
+            number = float(txt)
+            self.precision_inside = number
+        except Exception:
+            pass
+        self.lineedit_precision_inside.setText('%f'%(self.precision_inside))
+        self.saveSettings()
+        
+        
+        
+        
     
     def showHelp(self):
         msg = ("This macro converts assembly CAD model to X3D. It tries to recognize "
@@ -1208,15 +1444,21 @@ class X3dStepAssyDialog(QtGui.QWidget):
 #        msgBox.exec_()
 
     def executeMacro(self):
-        global ROOT_DIR, ASSEMBLY_PATH, STEP_PARTS, COMPONENTS
-        COMPONENTS = None # Start with new ones
-#        print ("ROOT_DIR=%s"%(ROOT_DIR))
-#        msgBox = QtGui.QMessageBox(QtGui.QMessageBox.Question, "About STEP->X3D Assembly converter", "ROOT_DIR=%s"%(ROOT_DIR))
-#        msgBox.exec_()
+        global ROOT_DIR, ASSEMBLY_PATH, STEP_PARTS, COMPONENTS, PRECISION, PRECISION_AREA, PRECISION_VOLUME, PRECISION_GYRATION, PRECISION_INSIDE
         FreeCAD.Console.PrintMessage("Starting execution...");
-        ASSEMBLY_PATH = self.assembly_path
-        ROOT_DIR = self.x3d_root_path
-        STEP_PARTS = self.step_parts_path
+        COMPONENTS =         None # Start with new ones
+        ASSEMBLY_PATH =      self.assembly_path
+        ROOT_DIR =           self.x3d_root_path
+        STEP_PARTS =         self.step_parts_path
+        
+        PRECISION =          self.precision
+        PRECISION_AREA =     self.precision_area
+        PRECISION_VOLUME =   self.precision_volume
+        PRECISION_GYRATION = self.precision_gyration
+        PRECISION_INSIDE =   self.precision_inside
+
+        self.saveSettings()
+
         if  self.log_file:
             sys.stdout = open(self.log_file,"w")
         else:
@@ -1239,16 +1481,76 @@ class X3dStepAssyDialog(QtGui.QWidget):
     
  
 #----------------------------------------------------------------------
+def saveSettings(): # when working w/o dialog
+    config = SafeConfigParser()
+    config.read(CONFIG_PATH) # OK not to have any file
+    try:
+        config.add_section('paths')
+    except:
+        pass # OK if the section already exists    
+    config.set('paths', 'assembly_path',   ASSEMBLY_PATH)
+    config.set('paths', 'x3d_root_path',   ROOT_DIR)
+    config.set('paths', 'step_parts_path', STEP_PARTS)
+    config.set('paths', 'log_file',        "")
+    try:
+        config.add_section('precisions')
+    except:
+        pass # OK if the section already exists    
+    config.set('precisions', 'precision',          '%f'%(PRECISION))
+    config.set('precisions', 'precision_area',     '%f'%(PRECISION_AREA))
+    config.set('precisions', 'precision_volume',   '%f'%(PRECISION_VOLUME))
+    config.set('precisions', 'precision_gyration', '%f'%(PRECISION_GYRATION))
+    config.set('precisions', 'precision_inside',   '%f'%(PRECISION_INSIDE))
+    with open(CONFIG_PATH, 'w') as f:
+        config.write(f)
+
+def restoreSettings():
+    global ROOT_DIR, ASSEMBLY_PATH, STEP_PARTS, COMPONENTS, PRECISION, PRECISION_AREA, PRECISION_VOLUME, PRECISION_GYRATION, PRECISION_INSIDE
+    
+    config = SafeConfigParser()
+    config.read(CONFIG_PATH) # OK not to have any file
+    try:
+        ASSEMBLY_PATH =      config.get('paths', 'assembly_path')
+    except:
+        pass
+    try:         
+        ROOT_DIR =           config.get('paths', 'x3d_root_path')
+    except:
+        pass
+    try:            
+        STEP_PARTS =         config.get('paths', 'step_parts_path')
+    except:
+        pass
+    try:     
+        PRECISION =          float(config.get('precisions', 'precision'))
+    except:
+        pass
+    try:     
+        PRECISION_AREA =     float(config.get('precisions', 'precision_area'))
+    except:
+        pass
+    try:     
+        PRECISION_VOLUME =   float(config.get('precisions', 'precision_volume'))
+    except:
+        pass
+    try:     
+        PRECISION_GYRATION = float(config.get('precisions', 'precision_gyration'))
+    except:
+        pass
+    try:     
+        PRECISION_INSIDE =   float(config.get('precisions', 'precision_inside'))
+    except:
+        pass
+
 if __name__ == "__main__":    
-    form = X3dStepAssyDialog(assembly_path= ASSEMBLY_PATH, x3d_root_path = ROOT_DIR, step_parts_path = STEP_PARTS) # FreeCADGui.getMainWindow())
+    form = X3dStepAssyDialog() # FreeCADGui.getMainWindow())
     form.show()
 
-#    run()
-#    def __init__(self, assembly_path=None, x3d_root_path=None, step_parts_path = None):
 
 """
 reload (x3d_step_assy)
-form = x3d_step_assy.X3dStepAssyDialog(assembly_path= x3d_step_assy.ASSEMBLY_PATH, x3d_root_path = x3d_step_assy.ROOT_DIR, step_parts_path = x3d_step_assy.STEP_PARTS)
+#form = x3d_step_assy.X3dStepAssyDialog(assembly_path= x3d_step_assy.ASSEMBLY_PATH, x3d_root_path = x3d_step_assy.ROOT_DIR, step_parts_path = x3d_step_assy.STEP_PARTS)
+form = x3d_step_assy.X3dStepAssyDialog()
 form.show()
 components= x3d_step_assy.generateAssemblyX3d(x3d_step_assy.ASSEMBLY_PATH)
 >>> Gui.getDocument("Unnamed").getObject("Part__Feature").Visibility=False
