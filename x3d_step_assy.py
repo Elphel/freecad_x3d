@@ -559,6 +559,12 @@ def findComponents(assembly,
     @param precision_inside = PRECISION_INSIDE - relative precision in calculations of point inside/outside of a solid
     @param precision =        PRECISION - precision in vector calculation
     @param show_best - calculate and show the best relative match for each parameter - can be used to fine-tune PRECISION* parameters
+    @return a dictionary with 4 fields (each list value has the same number of elements):
+                              'solids' - a list of solids in the assembly
+                              'objects' - a list of solid properties (as dictionaries) used for identification
+                              'candidates' - a list of candidate parts dictionaries, containing lists of matched colors
+                              'transformation' - a list of dictionaries of transformations, indexed by part names (normally just one element)
+    The same return dictionary is saved as a global variable COMPONENTS and is available as getComponents() method                           
     """
     FreeCAD.Console.PrintMessage("findComponents(): Getting parts database");
     global COMPONENTS
@@ -620,11 +626,6 @@ def findComponents(assembly,
                       )
             if show_best:
                 list_errors.append(errors)
-#            if ((abs(o['volume'] - co['volume']) < vp) and
-#                (abs(o['area'] -   co['area']) <   ap) and
-#                (abs(rg[0] -       co['principal']['RadiusOfGyration'][0]) <   rgp) and
-#                (abs(rg[1] -       co['principal']['RadiusOfGyration'][1]) <   rgp) and
-#                (abs(rg[2] -       co['principal']['RadiusOfGyration'][2]) <   rgp)):
 
             if ((errors[0] < vp) and
                 (errors[1] < ap) and
@@ -660,19 +661,11 @@ def findComponents(assembly,
     return COMPONENTS
 #    return {"solids":solids,"objects":objects,"candidates":candidates,"transformations":transformations}
 def getComponents():
+    """
+    @return global COMPONENTS directory, set by findComponents()
+    """
     return COMPONENTS
 
-
-def ortho3(v0,v1):
-    v0.normalize()
-    dv = FreeCAD.Vector(v0).multiply(v0.dot(v1))
-    v1  = v1.sub(dv)
-    v1.normalize()
-    v2= v0.cross(v1)
-    v2.normalize()
-    return (v0,v1,v2)
-    
-    
 
 def ppToMatrix(pp,
                center =      (0,0,0),
@@ -681,14 +674,22 @@ def ppToMatrix(pp,
                orient  =      0,
                precision =    PRECISION): 
     """
-    @param pp - PrincipalProperties
-    @param center - Center of mass
+    Generates object transformation matix (used for parts and assembly objects) including center of volume translation
+    and rotational axes (ortho-normal). The axes selection is base on the off-center colored components (centers of same
+    colored faces) and gyration axes. The 'color' axes have precedence, gyration ones are added when the color ones are
+    insufficient. First axis is selected as being the longest, second - as having largest component perpendicular to the
+    first, and the third is just a common perpendicular to the first two. Gyration axes do not provide sign, so for
+    asymmetrical object with 3 different gyration radii there could be 4 different orientations having the same inertial
+    properties 
+    
+    @param pp - PrincipalProperties (including gyration axes)
+    @param center - Center of volume
     @param colorCenters - dictionary indexed by colors, having center of color and area of each color (not used here)
     @param colors - list of matched colors (tuples)
     @param orient - 2-bit modifier for first and second axis of inertia (bit 0 - sign of the first axis, bit 1 - sign of the second)
                     orient will be overridden if there are some color vectors that define orientation
     @param precision - multiplier for the radius of gyration to compare with color vectors 
-    @return 4-matrix 
+    @return 4x4 transformation matrix 
     """
     rg= pp['RadiusOfGyration']
     eps=math.sqrt(rg[0]**2 + rg[1]**2 + rg[2]**2) * precision
@@ -723,7 +724,6 @@ def ppToMatrix(pp,
             vgyro[0].multiply(-1.0)        
         if (orient & 2 ) :
             vgyro[1].multiply(-1.0)        
-        #v0,v1,v2 = ortho3(v0,v1)
         if vgyro[2].dot(vgyro[0].cross(vgyro[1])) < 0 :
             vgyro[2].multiply(-1.0)
 ##        print ("vgyro=", vgyro)        
@@ -776,32 +776,53 @@ def ppToMatrix(pp,
                            0.0,          0.0,          0.0,          1.0)
 
 def list_parts_offsets():
+    """
+    Shows center of volume distance from (0,0,0) for each part. It may be beneficial
+    to re-export STEP models from CAD if the offset is very large to increase the
+    precision of calculations.
+    Builds the parts info files if not available/obsolete
+    @return ordered list of (part_name, offset) tuples, in descending order of offsets 
+    """
     info_files = get_info_files()
+    parts_offsets=[]
     for i, name in enumerate(info_files):
         for j,o in enumerate(info_files[name]):
             d = math.sqrt(o["center"][0]**2 + o["center"][1]**2 + o["center"][2]**2)
             if j == 0:
                 print("%4d:"%(i), end="")
+                parts_offsets.append((name, d))    
+
             else:
                 print("     ", end="")
             print("%s offset = %6.1f"%(name, d))
-
+    # now sort:
+    parts_offsets =  sorted(parts_offsets, key=lambda offs: -offs[1])
+    print ("\nSorted:")
+    for o in parts_offsets:
+        print ("%s: %f"%(o))
+    return parts_offsets
+    
+    
 def list_parts():
+    """
+    Output each part information to console/log file
+    """
     info_files = get_info_files()
     for i, name in enumerate(info_files):
         print ("%4d '%s': %d solids:%s"%(i,name,len(info_files[name]),str(info_files[name])))
 
-
-# X3D Export
-def getShapeNode(vertices, faces, diffuseColor = None, main_color_index = 0, colorPerVertex = True):
-    """Returns a <Shape> node for given mesh data.
-    vertices: list of vertice coordinates as `Vector` type
-    faces: list of tuple of vertice indexes and optionally a face color index ex: (1, 2, 3) or (1, 2, 3, 0)
-    diffuseColor: None or a list with 3*N color component values i the form of [R, G, B, R1, G1, B1, ...]
-    If only 3 color components are specified, they are applied to the whole shape, otherwise each vertex
-    is assigned color from the face color index
+def getShapeNode(vertices, faces, diffuseColor = None, main_color_index = 0, colorPerVertex = False):
     """
-
+    Build a node for the tesselated mesh data 
+    @param vertices: list of vertice coordinates as `Vector` type
+    @param faces: list of tuples of vertice indices and optionally a face color index ex: (1, 2, 3) or (1, 2, 3, 0)
+    @param diffuseColor: None or a list with 3*N color component values in the form of [R, G, B, R1, G1, B1, ...]
+           If only 3 color components are specified, they are applied to the whole shape, otherwise each vertex
+           (or face) is assigned color from the face color index
+    @param main_color_index - in multi-color object this index sets the color of the object
+    @param colorPerVertex - True: specify color per erach vertex, False - for each face (reduces file size)
+    @return XML node for the whole shape to be inserted in the X3D file    
+    """
     shapeNode = et.Element('Shape')
     faceNode = et.SubElement(shapeNode, 'IndexedFaceSet')
     faceNode.set('coordIndex', ' '.join(["%d %d %d -1" % face[0:3] for face in faces]))
@@ -824,14 +845,17 @@ def getShapeNode(vertices, faces, diffuseColor = None, main_color_index = 0, col
     return shapeNode
 
 def exportX3D(objects, filepath,  id="part", colorPerVertex=False):
-    """Export given list of objects to a X3D file.
-
-    Each object is a dictionary in this form:
-    {
-        points : [Vector, Vector...],
-        faces : [(pi, pi, pi, ci), ...],    # pi: point index, ci - color index (optional)
-        color : [R, G, B,...]            # number range is 0-1.0, exactly 3 elements for a single color, 3*N for per-vertex colors
-    }
+    """
+    Export given list of objects to a X3D file.
+    @param objects - a list of dictionaries in the following format:
+            {
+                points : [Vector, Vector...],
+                faces : [(pi, pi, pi, ci), ...],    # pi: point index, ci - color index (optional)
+                color : [R, G, B,...]            # number range is 0-1.0, exactly 3 elements for a single color, 3*N for per-vertex colors
+            }
+    @param filepath - os path of the file to save X3D data
+    @param id - id set for the X3D Group node wrapping all the objects in the file
+    @param colorPerVertex - True: specify color per erach vertex, False - for each face (reduces file size)
     """
     progress_bar = Base.ProgressIndicator()
     progress_bar.start("Saving objects to X3D file %s ..."%(filepath), len(objects))
@@ -856,6 +880,18 @@ def exportX3D(objects, filepath,  id="part", colorPerVertex=False):
     progress_bar.stop()
 
 def prepareX3dExport(freecadObjects, fname=""):
+    """
+    Convert object geometry (including color that is separate in FreeCAD) for exporting to X3D,
+    tessellate faces to traingles
+    @param freecadObjects - a list of FreeCAD objects
+    @param fname - file name/path used for the progress bar indicator
+    @return a list of dictionaries in the following format:
+            {
+                points : [Vector, Vector...],
+                faces : [(pi, pi, pi, ci), ...],    # pi: point index, ci - color index (optional)
+                color : [R, G, B,...]            # number range is 0-1.0, exactly 3 elements for a single color, 3*N for per-vertex colors
+            }
+    """
     objects = []
     progress_bar = Base.ProgressIndicator()
     txt=""
@@ -922,6 +958,12 @@ def prepareX3dExport(freecadObjects, fname=""):
     return objects
 
 def generatePartsX3d(dir_list = [STEP_PARTS], colorPerVertex = COLOR_PER_VERTEX):
+    """
+    Convert all parts to X3D, skipping already converted ones, processing only
+    non-existing or obsolete (older than the source STEP models)
+    @param dir_list - a list of directories to look for STEP models
+    @param colorPerVertex - True: specify color per erach vertex, False - for each face (reduces file size)
+    """
     start_time=time.time()
     info_dict= get_info_files(dir_list) # Will (re-) build info files if missing
     step_list = get_step_list(dir_list) # now absolute, not relative to ROOT_DIR
@@ -942,7 +984,15 @@ def generatePartsX3d(dir_list = [STEP_PARTS], colorPerVertex = COLOR_PER_VERTEX)
             FreeCADGui.updateGui()
             numExported += 1
     print("Exported %d files as X3D in @%f seconds, "%(numExported, time.time()-start_time))
+    
 def matrix4ToX3D(m, eps=0.000001): #assuming 3x3 matrix is pure rotational
+    """
+    Convert FreeCAD 4x4 transformation matrix to X3D representation
+    (translation and rotation by the specified angle around the specified axis
+    @param m - 4x4 transformation matrix
+    @return a dictionary of two elements: "translation" having a value of a 3-element tuple (x,y,z)
+            and  "rotation" as a 4-element tuple (axis and angle)
+    """
     axis=FreeCAD.Vector(m.A32-m.A23, m.A13-m.A31, m.A21-m.A12)
     r = axis.Length # math.sqrt(axis.X**2 + axis.Y**2 + axis.Z**2)
     tr = m.A11 + m.A22 + m.A33
@@ -996,6 +1046,28 @@ def generateAssemblyX3d(assembly_path,
                         precision_inside =   PRECISION_INSIDE,
                         precision =          PRECISION
                         ):
+    """
+    Generate X3D file for the assembly and the parts (if they are not yet converted)
+    @param assembly_path - may be file path (different treatment for Gui/no-Gui, Shape or doc.Objects or "" - will
+                           use ActiveDocument().Objects
+    @param components a dictionary as generated by findComponents() or None - in that case the rather long search for
+                      parts/transformations. If it is provided (or the global COMPONENTS dictionary is defined) this
+                      method just generates x3d files from the prepared data
+    @param colorPerVertex - True: specify color per erach vertex, False - for each face (reduces file size)
+    @param precision_area =   PRECISION_AREA - relative precision in surface area calculations
+    @param precision_volume = PRECISION_VOLUME - relative precision in volume calculations
+    @param precision_gyration = PRECISION_GYRATION - relative precision in radius of gyration calculations
+    @param precision_inside = PRECISION_INSIDE - relative precision in calculations of point inside/outside of a solid
+    @param precision =        PRECISION - precision in vector calculation
+
+    @return a dictionary with 4 fields (each list value has the same number of elements):
+                              'solids' - a list of solids in the assembly
+                              'objects' - a list of solid properties (as dictionaries) used for identification
+                              'candidates' - a list of candidate parts dictionaries, containing lists of matched colors
+                              'transformation' - a list of dictionaries of transformations, indexed by part names (normally just one element)
+    The same return dictionary is saved as a global variable COMPONENTS and is available as getComponents() method                           
+    """
+    
     start_time=time.time()
     info_dict = get_info_files(dir_list) # Will (re-) build info files if missing
     FreeCAD.Console.PrintMessage("generateAssemblyX3d()");
@@ -1086,7 +1158,15 @@ def generateAssemblyX3d(assembly_path,
 
     return components
 
-def showFailedComponents(components = COMPONENTS):
+def showFailedComponents(components = None):
+    """
+    Shows failed components - assembly elements for which the program could not find parts+transformations by
+    adding them to the FreeCAD document that contains assembly. All other solids are hidden (visibility is set
+    to False) so the added ones are easier visible. In many cases these missing components do not constitute a
+    problem as they match to other (non-primary) components of the STEP part files (current software only uses
+    the primary (largest by volume) solid of each part file for identification.
+    @param components - a dictionary of lists as defined in findComponents() description
+    """
     if components is None:
         components = COMPONENTS
     FreeCADGui.SendMsgToActiveView("ViewFit")
@@ -1098,12 +1178,31 @@ def showFailedComponents(components = COMPONENTS):
     for i, s in enumerate(components['solids']):
         if not components['transformations'][i]:
             doc.addObject("Part::Feature","missing_%d"%i).Shape = s
-
-def run():
-#    form = X3dStepAssyDialog() # FreeCADGui.getMainWindow())
-#    form.show()
-    get_info_files()
-    
+def getBOM(components = None):
+    """
+    Build a Bill of Materials (parts list) for the assembly
+    @param components - a dictionary of lists as defined in findComponents() description
+    @return an list of pairs - tuples (part_name, number_of_instances), ordered by the part names
+    """
+    if components is None:
+        components = COMPONENTS
+    if not components:
+        return None
+    d={}
+    for t in components['transformations']:
+        if t:
+            if len(t) >1:
+                print ("***** WARNING: Multiple candidate parts for the same assembly element: %s"%(str(t)))
+            pn = t.keys()[0] # in unlikely case of multiple candidates use the first one
+            if pn in d:
+                d[pn] += 1
+            else:
+                d[pn] = 1
+    bom = sorted(d.items(), key = lambda t:t[0])
+    print("\nParts List:")
+    for i, p in enumerate(bom):
+        print ("%3d: %s %2d"%(i,p[0],p[1]))
+    return bom    
 
 #X3dStepAssyDialog
 ########################################################################
@@ -1120,6 +1219,70 @@ class X3dStepAssyDialog(QtGui.QWidget):
     precision_volume =   0.001
     precision_gyration = 0.001
     precision_inside =   0.03
+    
+    textWindows=[]
+    class TextViewerWindow(QtGui.QWidget):
+        """"""
+        dir = "" 
+        #----------------------------------------------------------------------
+        def __init__(self, text_to_show, title, geometry=(50,50,400,800), rd0nly=False, dir=""):
+            self.dir = dir
+            """Constructor"""
+            QtGui.QWidget.__init__(self)
+            
+
+            self.setWindowTitle(title)
+            self.setGeometry(*geometry)
+            
+            self.text_editor = QtGui.QTextEdit(self)
+            self.text_editor.setText(text_to_show)
+            self.text_editor.setReadOnly(rd0nly)
+     
+            saveButton = QtGui.QPushButton('Save')
+            saveButton.clicked.connect(self.openSaveFileDialog)
+
+            printButton = QtGui.QPushButton('Print')
+            printButton.clicked.connect(self.onPrint)
+            
+            printPreviewButton = QtGui.QPushButton('Preview Print')
+            printPreviewButton.clicked.connect(self.onPrintPreview)
+     
+            btnLayout = QtGui.QHBoxLayout()
+            mainLayout = QtGui.QVBoxLayout()
+     
+            btnLayout.addWidget(saveButton)
+            btnLayout.addWidget(printButton)
+            btnLayout.addWidget(printPreviewButton)
+            mainLayout.addWidget(self.text_editor)
+            mainLayout.addLayout(btnLayout)
+            self.setLayout(mainLayout)
+     
+        #----------------------------------------------------------------------
+        def onPrint(self):
+            """
+            Create and show the print dialog
+            """
+            dialog = QtGui.QPrintDialog()
+            if dialog.exec_() == QtGui.QDialog.Accepted:
+                doc = self.text_editor.document()
+                doc.print_(dialog.printer())
+     
+        #----------------------------------------------------------------------
+        def onPrintPreview(self):
+            """
+            Create and show a print preview window
+            """
+            dialog = QtGui.QPrintPreviewDialog()
+            dialog.paintRequested.connect(self.text_editor.print_)
+            dialog.exec_()        
+
+        #----------------------------------------------------------------------
+        def openSaveFileDialog(self):
+            path, _ = QtGui.QFileDialog.getSaveFileName(self, "Save File", self.dir)
+            if path:
+                with open (path, 'w') as f:
+                    f.write(self.text_editor.toPlainText())
+    
 
     #----------------------------------------------------------------------
     def get_path_text(self, path, mode = None):
@@ -1128,7 +1291,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         if mode == "assy":
             return "Active document"
         elif mode == "log":
-            return "stdout"
+            return "none" # stdout"
         else:
             return "not set"
                  
@@ -1217,7 +1380,13 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.step_parts_btn = QtGui.QPushButton(self.get_path_text(self.step_parts_path))
         self.step_parts_btn.setToolTip("Select directory containing all the parts STEP models. Will scan sub-directories")
         self.help_btn =       QtGui.QPushButton("?")
-        self.execute_btn  =   QtGui.QPushButton("Execute macro (may take hours!)")
+        self.execute_btn  =   QtGui.QPushButton("Convert")
+        self.execute_btn.setToolTip("Build X3D models for the parts (if needed) and the assembly. May take hours!")
+        self.offsets_btn  =   QtGui.QPushButton("Parts offsets")
+        self.offsets_btn.setToolTip("List part centers offsets. Keeping them small (compared to the part size) increases precision of transformations")
+        self.bom_btn  =       QtGui.QPushButton("(BOM)")
+        self.bom_btn.setToolTip("Bill of Materials - available after assembly conversion")
+
         
         label_precision =           QtGui.QLabel("precision")
         label_precision_area =      QtGui.QLabel("precision_area")
@@ -1257,39 +1426,45 @@ class X3dStepAssyDialog(QtGui.QWidget):
 
         self.help_btn.clicked.connect(self.showHelp)
         self.execute_btn.clicked.connect(self.executeMacro)
+        self.offsets_btn.clicked.connect(self.showOffsets)
+        self.bom_btn.clicked.connect(self.showBOM)
  
         # layout widgets
         layout = QtGui.QGridLayout() # parent=parent)
         layout.setColumnStretch(1,1)
+        layout.setColumnStretch(2,1)
+        layout.setColumnStretch(3,1)
         layout.addWidget(label_assembly,                   0, 0)
-        layout.addWidget(self.assembly_btn,                0, 1)
+        layout.addWidget(self.assembly_btn,                0, 1, 1, 3)
 
         layout.addWidget(label_x3d_root_btn,               1, 0)
-        layout.addWidget(self.x3d_root_btn,                1, 1)
+        layout.addWidget(self.x3d_root_btn,                1, 1, 1, 3)
 
         layout.addWidget(label_step_parts,                 2, 0)
-        layout.addWidget(self.step_parts_btn,              2, 1)
+        layout.addWidget(self.step_parts_btn,              2, 1, 1, 3)
 
         layout.addWidget(label_log_file,                   3, 0)
-        layout.addWidget(self.log_file_btn,                3, 1)
+        layout.addWidget(self.log_file_btn,                3, 1, 1, 3)
         
         layout.addWidget(label_precision,                  4, 0)
-        layout.addWidget(self.lineedit_precision,          4, 1)
+        layout.addWidget(self.lineedit_precision,          4, 1, 1, 1)
         
         layout.addWidget(label_precision_area,             5, 0)
-        layout.addWidget(self.lineedit_precision_area,     5, 1)
+        layout.addWidget(self.lineedit_precision_area,     5, 1, 1, 1)
         
         layout.addWidget(label_precision_volume,           6, 0)
-        layout.addWidget(self.lineedit_precision_volume,   6, 1)
+        layout.addWidget(self.lineedit_precision_volume,   6, 1, 1, 1)
         
         layout.addWidget(label_precision_gyration,         7, 0)
-        layout.addWidget(self.lineedit_precision_gyration, 7, 1)
+        layout.addWidget(self.lineedit_precision_gyration, 7, 1, 1, 1)
         
         layout.addWidget(label_precision_inside,           8, 0)
-        layout.addWidget(self.lineedit_precision_inside,   8, 1)
+        layout.addWidget(self.lineedit_precision_inside,   8, 1, 1, 1)
         
         layout.addWidget(self.help_btn,                    9, 0)
-        layout.addWidget(self.execute_btn,                 9, 1)
+        layout.addWidget(self.offsets_btn,                 9, 1)
+        layout.addWidget(self.execute_btn,                 9, 2)
+        layout.addWidget(self.bom_btn,                     9, 3)
         
         self.setLayout(layout)
  
@@ -1437,16 +1612,14 @@ class X3dStepAssyDialog(QtGui.QWidget):
                "as STEP models to the CAD that is used for the assembly and re-exporting to STEP "
                "so both part and assembly STEP files will be generated by the same software.\n\n"
                )   
-        msgBox = QtGui.QMessageBox(QtGui.QMessageBox.Question, "About STEP->X3D Assembly converter", msg)
-        msgBox.exec_()
-#        msgBox = QtGui.QMessageBox.about(self,"About STEP->X3D Assembly converter",msg )
-#        msgBox.setText("The document has been modified.")
+#        msgBox = QtGui.QMessageBox(QtGui.QMessageBox.Question, "About STEP->X3D Assembly converter", msg)
 #        msgBox.exec_()
-
-    def executeMacro(self):
+        txt_edit = X3dStepAssyDialog.TextViewerWindow(msg,"Macro Description",(100,10,600,1000),True,self.x3d_root_path)
+        txt_edit.show()
+        self.textWindows.append(txt_edit)
+        
+    def preRun(self):    
         global ROOT_DIR, ASSEMBLY_PATH, STEP_PARTS, COMPONENTS, PRECISION, PRECISION_AREA, PRECISION_VOLUME, PRECISION_GYRATION, PRECISION_INSIDE
-        FreeCAD.Console.PrintMessage("Starting execution...");
-        COMPONENTS =         None # Start with new ones
         ASSEMBLY_PATH =      self.assembly_path
         ROOT_DIR =           self.x3d_root_path
         STEP_PARTS =         self.step_parts_path
@@ -1464,6 +1637,60 @@ class X3dStepAssyDialog(QtGui.QWidget):
         else:
             sys.stdout = sys.__stdout__
 
+    def showBOM(self):
+        if not COMPONENTS:
+            msgBox = QtGui.QMessageBox.critical(self,"BOM not available", "BOM is available only after assembly conversion")
+            msgBox.exec_()
+            return
+        FreeCAD.Console.PrintMessage("Getting BOM...")
+        self.preRun()
+        offsets = list_parts_offsets()
+        bom = getBOM()
+        sys.stdout.close()
+        sys.stdout = sys.__stdout__
+        try:
+            if self.assembly_path:
+                aname,_ =  os.path.splitext(os.path.basename(assembly_path))
+            elif not  FreeCAD.ActiveDocument.Label.startswith(u"Unnamed"):
+                aname =  FreeCAD.ActiveDocument.Label
+            else:
+                aname = FreeCAD.ActiveDocument.Objects[0].Label
+        except:
+            aname="unknown assembly"
+        self.bom_btn.setText("BOM")
+        txt="Bill of Materials for %s \n\n"%(aname)
+        
+        for i, m in enumerate(bom):
+            txt += "%3d\t%s\t%d\n"%(i,m[0],int(m[1]))
+
+        txt_edit = X3dStepAssyDialog.TextViewerWindow(txt,"Bill of Materials for %s"%(aname),(400,10,300,800),False,self.x3d_root_path)
+        txt_edit.show()
+        self.textWindows.append(txt_edit)
+        return
+        
+    def showOffsets(self):
+        FreeCAD.Console.PrintMessage("Starting parts offsets calculation...")
+        self.preRun()
+        offsets = list_parts_offsets()
+        sys.stdout.close()
+        sys.stdout = sys.__stdout__
+
+        txt=("Parts volume centers distance from the coordinate origin. "
+             "Keeping this distance reasonably small (not larger than the object size) "
+             "may help to improve precision of objects transformations\n\n")
+        for offset in offsets:
+            txt += "%s\t%3.2f\n"%offset
+        
+        txt_edit = X3dStepAssyDialog.TextViewerWindow(txt,"Parts offset distances",(200,10,300,800),False,self.x3d_root_path)
+        txt_edit.show()
+        self.textWindows.append(txt_edit)
+
+    def executeMacro(self):
+        global COMPONENTS
+        COMPONENTS =         None # Start with new ones
+        FreeCAD.Console.PrintMessage("Starting conversion...")
+        self.preRun()
+
         try: # does not work
             components=generateAssemblyX3d(self.assembly_path) # If None - will use ActiveDocument().Objects
         except:
@@ -1471,12 +1698,13 @@ class X3dStepAssyDialog(QtGui.QWidget):
         showFailedComponents(components)
         sys.stdout.close()
         sys.stdout = sys.__stdout__
+        COMPONENTS = components
+        self.bom_btn.setText("BOM")
         
     def errorDialog(msg):
     # Create a simple dialog QMessageBox
     # The first argument indicates the icon used: one of QtGui.QMessageBox.{NoIcon, Information, Warning, Critical, Question}
         diag = QtGui.QMessageBox(QtGui.QMessageBox.Error, 'Error in macro', msg)
-        diag.setWindowModality(QtCore.Qt.ApplicationModal)
         diag.exec_()
     
  
@@ -1548,11 +1776,15 @@ if __name__ == "__main__":
 
 
 """
+import x3d_step_assy
 reload (x3d_step_assy)
-#form = x3d_step_assy.X3dStepAssyDialog(assembly_path= x3d_step_assy.ASSEMBLY_PATH, x3d_root_path = x3d_step_assy.ROOT_DIR, step_parts_path = x3d_step_assy.STEP_PARTS)
 form = x3d_step_assy.X3dStepAssyDialog()
 form.show()
 components= x3d_step_assy.generateAssemblyX3d(x3d_step_assy.ASSEMBLY_PATH)
->>> Gui.getDocument("Unnamed").getObject("Part__Feature").Visibility=False
+Gui.getDocument("Unnamed").getObject("Part__Feature").Visibility=False
+
+txt="Bill of Materials for %s \n\n"%(aname)
+for i, m in enumerate(bom):
+    txt += "%3d\t%s\t%d\n"%(i,m[0],int(m[1]))
 
 """
