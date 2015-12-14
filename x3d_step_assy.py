@@ -1297,7 +1297,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         if path:
             return path
         if mode == "assy":
-            return "Active document"
+            return "Active FreeCAD document"
         elif mode == "log":
             return "none" # stdout"
         else:
@@ -1660,10 +1660,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
             return
         FreeCAD.Console.PrintMessage("Getting BOM...")
         self.preRun()
-        offsets = list_parts_offsets()
         bom = getBOM()
-#        sys.stdout.close()
-#        sys.stdout = sys.__stdout__
         try:
             if self.assembly_path:
                 aname,_ =  os.path.splitext(os.path.basename(assembly_path))
@@ -1677,7 +1674,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.bom_btn.setToolTip("Generate Bill of Materials (parts list)")
         txt="Bill of Materials for %s \n\n"%(aname)
         for i, m in enumerate(bom):
-            txt += "%3d\t%s\t%d\n"%(i,m[0],int(m[1]))
+            txt += "%3d\t%s\t%d\n"%(i+1,m[0],int(m[1]))
 
         txt_edit = X3dStepAssyDialog.TextViewerWindow(txt,"Bill of Materials for %s"%(aname),(400,10,300,500),False,False,self.x3d_root_path)
         txt_edit.show()
@@ -1688,8 +1685,6 @@ class X3dStepAssyDialog(QtGui.QWidget):
         FreeCAD.Console.PrintMessage("Starting parts offsets calculation...")
         self.preRun()
         offsets = list_parts_offsets()
-#        sys.stdout.close()
-#        sys.stdout = sys.__stdout__
 
         txt=("Parts volume centers distance from the coordinate origin. "
              "Keeping this distance reasonably small (not larger than the object size) "
