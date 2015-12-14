@@ -1223,10 +1223,12 @@ class X3dStepAssyDialog(QtGui.QWidget):
     textWindows=[]
     class TextViewerWindow(QtGui.QWidget):
         """"""
-        dir = "" 
+        dir = ""
+        isHTML = False 
         #----------------------------------------------------------------------
-        def __init__(self, text_to_show, title, geometry=(50,50,400,800), rd0nly=False, dir=""):
+        def __init__(self, text_to_show, title, geometry=(50,50,400,800), rd0nly=False, isHTML=False, dir=""):
             self.dir = dir
+            self.isHTML = isHTML
             """Constructor"""
             QtGui.QWidget.__init__(self)
             
@@ -1235,7 +1237,10 @@ class X3dStepAssyDialog(QtGui.QWidget):
             self.setGeometry(*geometry)
             
             self.text_editor = QtGui.QTextEdit(self)
-            self.text_editor.setText(text_to_show)
+            if self.isHTML:
+                self.text_editor.setHtml(text_to_show)
+            else:
+                self.text_editor.setText(text_to_show)
             self.text_editor.setReadOnly(rd0nly)
      
             saveButton = QtGui.QPushButton('Save')
@@ -1281,7 +1286,10 @@ class X3dStepAssyDialog(QtGui.QWidget):
             path, _ = QtGui.QFileDialog.getSaveFileName(self, "Save File", self.dir)
             if path:
                 with open (path, 'w') as f:
-                    f.write(self.text_editor.toPlainText())
+                    if self.isHTML:
+                        f.write(self.text_editor.toHtml())
+                    else:    
+                        f.write(self.text_editor.toPlainText())
     
 
     #----------------------------------------------------------------------
@@ -1380,12 +1388,13 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.step_parts_btn = QtGui.QPushButton(self.get_path_text(self.step_parts_path))
         self.step_parts_btn.setToolTip("Select directory containing all the parts STEP models. Will scan sub-directories")
         self.help_btn =       QtGui.QPushButton("?")
+        self.help_btn.setToolTip("Show description of this program")
         self.execute_btn  =   QtGui.QPushButton("Convert")
         self.execute_btn.setToolTip("Build X3D models for the parts (if needed) and the assembly. May take hours!")
         self.offsets_btn  =   QtGui.QPushButton("Parts offsets")
         self.offsets_btn.setToolTip("List part centers offsets. Keeping them small (compared to the part size) increases precision of transformations")
         self.bom_btn  =       QtGui.QPushButton("(BOM)")
-        self.bom_btn.setToolTip("Bill of Materials - available after assembly conversion")
+        self.bom_btn.setToolTip("Bill of Materials (available after assembly conversion)")
 
         
         label_precision =           QtGui.QLabel("precision")
@@ -1562,20 +1571,34 @@ class X3dStepAssyDialog(QtGui.QWidget):
         
     
     def showHelp(self):
-        msg = ("This macro converts assembly CAD model to X3D. It tries to recognize "
+        msg = ("<h2>LICENSE</h2>\n"
+               "<p>Copyright (C) 2015, Elphel.inc.</p>\n"
+               "<p>This program is free software: you can redistribute it and/or modify "
+               "it under the terms of the GNU General Public License as published by "
+               "the Free Software Foundation, either version 3 of the License, or "
+               "(at your option) any later version.</p>\n"
+               "<p>This program is distributed in the hope that it will be useful, "
+               "but WITHOUT ANY WARRANTY; without even the implied warranty of "
+               "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the "
+               "GNU General Public License for more details.</p>\n"
+               "<p>You should have received a copy of the GNU General Public License "
+               "along with this program.  If not, see "
+               "<a href='http://www.gnu.org/licenses/'>http://www.gnu.org/licenses/</a>.</p>\n"
+               "<h2>DESCRIPTION</h2>\n"
+               "<p>x3d_step_assy macro converts assembly CAD model to X3D. It tries to recognize "
                "individual parts (provided as STEP files) in the assembly model, converts "
                "each part to X3D and then generates assembly X3D file that includes inline "
                "references to the recognized part files, applying appropriate transformations "
-               "(rotations and translations).\n\n"
-               "First thing the program does is it scans all the STEP models under the "
+               "(rotations and translations).</p>\n"
+               "<p>First thing the program does is it scans all the STEP models under the "
                "specified directory and collects general properties of each file, including "
                "volume, surface area, center of mass, gyration radii and axes, as well as "
                "per-color centers. Normally each part should contain just one solid, but if "
                "there are more than one only the largest (by volume) will be used for "
                "identification in the assembly (in that case assembly may show multiple not "
                "matched solids that will still be correctly rendered in the final model with "
-               "each part).\n\n"
-               "This information will be saved in 'info' directory under the specified working "
+               "each part).</p>\n"
+               "<p>This information will be saved in 'info' directory under the specified working "
                "directory, same file name as the original STEP model but with extension "
                "'.pickle' (and yes, they are just Python pickle files). These files are "
                "saved in one directory, so each original part file have to have unique name, "
@@ -1583,13 +1606,13 @@ class X3dStepAssyDialog(QtGui.QWidget):
                "of the OS path without the extension) will be used as a part name and used "
                "in 'id' and 'class' properties of the result x3d files. The program only "
                "processes the part files if the corresponding info file does not exist or "
-               "has the modification timestamp earlier than the STEP model.\n\n"
-               "During the next step the assembly object is analyzed and the same properties "
+               "has the modification timestamp earlier than the STEP model.</p>\n"
+               "<p>During the next step the assembly object is analyzed and the same properties "
                "are extracted for each solid, then the each is compared to the library part "
                "and the parts with the same values (to the specified precision) are selected "
                "as potential candidates. Parts material is not used, so distinguish between "
-               "similar screws that have the same geometry the color may be used.\n\n"
-               "This allows to find the position of the center of volume of the part in the "
+               "similar screws that have the same geometry the color may be used.</p>\n"
+               "<p>This allows to find the position of the center of volume of the part in the "
                "assembly, but getting the correct orientation is trickier. For the asymmetrical "
                "(having all 3 different radii of gyration) it is rather easy (only 4 variants "
                "to check as the gyration axes can have opposite direction), it also works for "
@@ -1599,22 +1622,20 @@ class X3dStepAssyDialog(QtGui.QWidget):
                "Coloring just a single hole (not on the axis of the symmetry) in the part "
                "(and then using it in the assembly) breaks ambiguity. Parts that do not have "
                "faces that can be easily colored can be modified with boolean operations that "
-               "preserves the shape but add color asymmetry\n\n"
-               "When the solids are matched, the program generates missing/old (by timestamp) " 
+               "preserves the shape but add color asymmetry.</p>\n"
+               "<p>When the solids are matched, the program generates missing/old (by timestamp) " 
                "x3d files of the individual parts and assembly in the 'x3d' subdirectory of the "
                "working directory. It also generates and shows the parts that are not recognized "
                "(they might be 'other' solids of the part files and so will be available in the "
-               " generated model).\n\n"
-               "This method can work with most modern CAD systems, and does not require special "
+               "generated model).</p>\n"
+               "<p>This method can work with most modern CAD systems, and does not require special "
                "export - the colored STEP files are still good for production. In some systems "
                "the assembly model should be flattened (removed assembly status) before STEP "
                "export, it is also advised to import individual parts that are provided to you "
                "as STEP models to the CAD that is used for the assembly and re-exporting to STEP "
-               "so both part and assembly STEP files will be generated by the same software.\n\n"
+               "so both part and assembly STEP files will be generated by the same software.<p>"
                )   
-#        msgBox = QtGui.QMessageBox(QtGui.QMessageBox.Question, "About STEP->X3D Assembly converter", msg)
-#        msgBox.exec_()
-        txt_edit = X3dStepAssyDialog.TextViewerWindow(msg,"Macro Description",(100,10,600,1000),True,self.x3d_root_path)
+        txt_edit = X3dStepAssyDialog.TextViewerWindow(msg,"Program Description",(100,10,600,920),True,True,self.x3d_root_path)
         txt_edit.show()
         self.textWindows.append(txt_edit)
         
@@ -1632,11 +1653,6 @@ class X3dStepAssyDialog(QtGui.QWidget):
 
         self.saveSettings()
 
-        if  self.log_file:
-            sys.stdout = open(self.log_file,"w")
-        else:
-            sys.stdout = sys.__stdout__
-
     def showBOM(self):
         if not COMPONENTS:
             msgBox = QtGui.QMessageBox.critical(self,"BOM not available", "BOM is available only after assembly conversion")
@@ -1646,8 +1662,8 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.preRun()
         offsets = list_parts_offsets()
         bom = getBOM()
-        sys.stdout.close()
-        sys.stdout = sys.__stdout__
+#        sys.stdout.close()
+#        sys.stdout = sys.__stdout__
         try:
             if self.assembly_path:
                 aname,_ =  os.path.splitext(os.path.basename(assembly_path))
@@ -1658,12 +1674,12 @@ class X3dStepAssyDialog(QtGui.QWidget):
         except:
             aname="unknown assembly"
         self.bom_btn.setText("BOM")
+        self.bom_btn.setToolTip("Generate Bill of Materials (parts list)")
         txt="Bill of Materials for %s \n\n"%(aname)
-        
         for i, m in enumerate(bom):
             txt += "%3d\t%s\t%d\n"%(i,m[0],int(m[1]))
 
-        txt_edit = X3dStepAssyDialog.TextViewerWindow(txt,"Bill of Materials for %s"%(aname),(400,10,300,800),False,self.x3d_root_path)
+        txt_edit = X3dStepAssyDialog.TextViewerWindow(txt,"Bill of Materials for %s"%(aname),(400,10,300,500),False,False,self.x3d_root_path)
         txt_edit.show()
         self.textWindows.append(txt_edit)
         return
@@ -1672,8 +1688,8 @@ class X3dStepAssyDialog(QtGui.QWidget):
         FreeCAD.Console.PrintMessage("Starting parts offsets calculation...")
         self.preRun()
         offsets = list_parts_offsets()
-        sys.stdout.close()
-        sys.stdout = sys.__stdout__
+#        sys.stdout.close()
+#        sys.stdout = sys.__stdout__
 
         txt=("Parts volume centers distance from the coordinate origin. "
              "Keeping this distance reasonably small (not larger than the object size) "
@@ -1681,7 +1697,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         for offset in offsets:
             txt += "%s\t%3.2f\n"%offset
         
-        txt_edit = X3dStepAssyDialog.TextViewerWindow(txt,"Parts offset distances",(200,10,300,800),False,self.x3d_root_path)
+        txt_edit = X3dStepAssyDialog.TextViewerWindow(txt,"Parts offset distances",(200,10,300,500),False,False,self.x3d_root_path)
         txt_edit.show()
         self.textWindows.append(txt_edit)
 
@@ -1690,6 +1706,10 @@ class X3dStepAssyDialog(QtGui.QWidget):
         COMPONENTS =         None # Start with new ones
         FreeCAD.Console.PrintMessage("Starting conversion...")
         self.preRun()
+        if  self.log_file:
+            sys.stdout = open(self.log_file,"w")
+        else:
+            sys.stdout = sys.__stdout__
 
         try: # does not work
             components=generateAssemblyX3d(self.assembly_path) # If None - will use ActiveDocument().Objects
@@ -1776,15 +1796,10 @@ if __name__ == "__main__":
 
 
 """
+Manually starting dialog:
 import x3d_step_assy
 reload (x3d_step_assy)
 form = x3d_step_assy.X3dStepAssyDialog()
 form.show()
-components= x3d_step_assy.generateAssemblyX3d(x3d_step_assy.ASSEMBLY_PATH)
-Gui.getDocument("Unnamed").getObject("Part__Feature").Visibility=False
-
-txt="Bill of Materials for %s \n\n"%(aname)
-for i, m in enumerate(bom):
-    txt += "%3d\t%s\t%d\n"%(i,m[0],int(m[1]))
 
 """
