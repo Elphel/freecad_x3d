@@ -3,25 +3,14 @@ FILE NAME  : viewmodel.js
 DESCRIPTION: x3d viewer
 REVISION: 1.00
 AUTHOR: Oleg Dzhimiev <oleg@elphel.com>
+LICENSE: AGPL v3+, see http://www.gnu.org/licenses/agpl.txt
 Copyright (C) 2015 Elphel, Inc.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 
 var model = "Undefined";
 var NSN = "m";
 var elphel_wiki_prefix = "http://wiki.elphel.com/index.php?search="
+var nobuttons = false;
 
 function resize(){
     var w = $(window).width();
@@ -41,11 +30,14 @@ function resize(){
 
 var resizeTimer;
 
+var moveTimeSet = 0;
+var moveTimeStamp;
+
 $(function(){
     
     $(window).resize(function(){
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(resize(),250);
+        resizeTimer = window.setTimeout(resize(),250);
     });
     
     //"model" and some other parameters
@@ -85,7 +77,7 @@ $(function(){
     var element = document.getElementById('x3d_canvas');
 
     //on load: showAll()?!
-    var showall = 10;
+    var showall = 8;
     $(document).load(function(){
         element.runtime.enterFrame = function() {
             if (showall==1) {
@@ -98,7 +90,8 @@ $(function(){
     });
     
     //help button
-    var hlp = $("<a href='http://www.x3dom.org/documentation/interaction/'>").addClass("btn btn-primary nooutline btn-sm btn-my").html("?");
+    //var hlp = $("<a href='http://www.x3dom.org/documentation/interaction/'>").addClass("btn btn-primary nooutline btn-sm btn-my").html("?");
+    var hlp = $("<div>").addClass("btn btn-primary nooutline btn-sm btn-my").html("?");
     hlp.css({
         position:"absolute",
         right: "3px",
@@ -108,8 +101,114 @@ $(function(){
         padding: "0px 6px 0px 6px"
     });
     
-    $("#main").append(hlp);
+    var hlp_text = $("<div>",{id:"help-text"}).css({
+        position:"absolute",
+        top:"2px",
+        right:"2px",
+//         width:"800px",
+//         height:"600px",
+        "border-radius":"2px",
+        border: "1px solid gray",
+        color:"white",
+        "font-size":"1.2em",
+        padding:"10px 10px 10px 10px",
+        background:"rgba(50,50,50,0.9)",
+        display:"none"
+    });
+    
+    hlp_text.html("\
+<table>\
+<tr>\
+    <td>Display area:<td>\
+</tr>\
+<tr>\
+    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; left-click:</b></td>\
+    <td valign='top'>select/deselect part and its copies</td>\
+</tr>\
+<tr>\
+    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; left-click + move:</b></td>\
+    <td valign='top'>rotate</td>\
+</tr>\
+<tr>\
+    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; right-click:</b></td>\
+    <td valign='top'>hide part and its copies</td>\
+</tr>\
+<tr>\
+    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; right-click + move:</b></td>\
+    <td valign='top'>zoom</td>\
+</tr>\
+<tr>\
+    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; middle-click + move:</b></td>\
+    <td valign='top'>drag</td>\
+</tr>\
+<tr>\
+    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dbl-left-click:</b></td>\
+    <td valign='top'>set center of rotation but <span style='color:rgba(255,100,100,1)'><b>interferes with left-click</b></span></td>\
+</tr>\
+<tr>\
+    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dbl-middle-click:</b></td>\
+    <td valign='top'>set center of rotation</td>\
+</tr>\
+<tr>\
+    <td>Side buttons (if enabled):</td>\
+</tr>\
+<tr>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <span style='padding:1px 5px;background:green;border-radius:2px 0px 0px 2px;'>abc</span><span style='padding:1px 5px;background:white;border-radius:0px 2px 2px 0px;color:black;'>&#x25BE;</span>&nbsp;<b>:</b></td>\
+    <td><b>abc</b> = Part Number</td>\
+</tr>\
+<tr>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <span style='padding:1px 5px;background:green;border-radius:2px 0px 0px 2px;'>abc</span> left-click:</b></td>\
+    <td>select / single / hide / delesect</td>\
+</tr>\
+<tr>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dropdown</b> <span style='padding:1px 5px;background:green;border-radius:2px;'>all</span> <b>:</b></td>\
+    <td>hide/show part and its copies</td>\
+</tr>\
+<tr>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dropdown</b> <span style='padding:1px 5px;background:green;border-radius:2px;'>1</span> <b>:</b></td>\
+    <td>hide/show single part or copy</td>\
+</tr>\
+<tr>\
+    <td>X3DOM controls help:</td>\
+</tr>\
+<tr>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='http://www.x3dom.org/documentation/interaction/' style='color:white'>www.x3dom.org</a></td>\
+</tr>\
+</table>\
+");
+    
+    hlp.click(function(){
+        hlp_text.css({display:""});
+    });
+    
+    hlp_text.click(function(){
+        $(this).css({display:"none"});
+    });
+    
+    $("#main").append(hlp).append(hlp_text);
          
+    rst_model = $("<button>",{id:"reset_model"}).addClass("btn-my btn nooutline").html("reset model").css({
+        position: "absolute",
+        top: "3px",
+        left: "3px",
+        cursor:"pointer"
+    });
+    
+    rst_model.click(function(){
+        $("Switch").each(function(){
+            $(this).attr("whichChoice",0);
+            $(this).find("Material").attr("transparency",0.1);
+            $(this).attr("state","normal");
+            $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+            $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
+            $(".btn-subpart[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").attr("selected",true);
+        });
+        btn_subpart_enableAll();
+        element.runtime.showAll("negZ");
+    });
+    
+    $("#main").append(rst_model);
+
     $("#thrd").css({
         position:"absolute",
         top: "3px",
@@ -141,6 +240,12 @@ function showBOM(){
         top:"5px",
         left:"705px"
     });
+    
+    if (nobuttons){
+        bom.css({
+            display:"none"
+        });
+    }
     
     var top = $("#topinline");
     //upper case was important
@@ -255,9 +360,29 @@ function bindCanvas(){
     });
     
     //unblock click
-    $("Switch").mousedown(function(){blockclick = false;});
+    $("Switch").mousedown(function(){
+        blockclick = false;
+    });
     //block click is the model was rotated
-    $("Switch").mousemove(function(){blockclick = true;});
+    $("Switch").mousemove(function(e){
+        //alert(e.which);
+        if (e.which==1) {
+            blockclick = true;
+        }
+    });
+    
+    var canvas = document.getElementById("x3d_canvas");
+    canvas.addEventListener("touchstart",function(e){
+        blockclick = false;
+        moveTimeStamp = getTimeStamp();
+    });
+    
+    canvas.addEventListener("touchmove",function(e){
+        //blockclick = true;
+        if ((getTimeStamp()-moveTimeStamp)>100){
+            blockclick = true;
+        }
+    });        
     //click
     $("Switch").click(function(event){
         if (!blockclick){
@@ -275,22 +400,22 @@ function bindCanvas(){
             }
             console.log("The pointer is over "+hmm.attr("id")+", whichChoice="+hmm.attr("whichChoice")+" render="+hmm.attr("render")+" DEF="+hmm.attr("DEF"));
         }
-    });
-    
-    //$("Switch").attr("onclick","handleClick(event)");
-    /*
-    $(".btn-subpart").each(function(){
-        var index = $(this).attr("index");
-        var selected = $(this).attr("selected");
-        var nsn = $(this).attr("nsn");
-        var some_subpart = document.getElementById(NSN+"__switch_"+nsn+":"+index);
-        $(some_subpart).click(function(){
-            //$(this).attr("whichChoice",-1);
-            console.log("CLIKED: "+$(this).attr("id"));
-        });
-    });
-    */
-        
+    });        
+}
+
+function getTimeStamp(){
+    var d = new Date();
+    return d.getTime();
+}
+
+function blockclique(){
+    blockclick = true;
+    //moveTimerSet = false;
+}
+
+function unblockclique(){
+    blockclick = false;
+    //moveTimerSet = false;
 }
 
 function model_run_cmd(name,cmd){
@@ -469,7 +594,7 @@ function btn_subpart_enableAll(){
         var selected = $(this).attr("selected");
         var nsn = $(this).attr("nsn");
         var some_subpart = document.getElementById(NSN+"__switch_"+nsn+":"+index);
-        $(some_subpart).attr("whichChoice","0");
+        $(some_subpart).attr("whichChoice","0").attr("selected",true);
     });
 }
 
@@ -479,6 +604,7 @@ function parseURL() {
   for (var i=1;i<parameters.length;i++) {
     switch (parameters[i][0]) {
       case "model": model = parameters[i][1];break;
+      case "nobuttons": nobuttons = true;break;
     }
   }
   console.log("Opening model: "+model);
