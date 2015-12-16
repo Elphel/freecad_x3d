@@ -59,6 +59,7 @@ ROOT_DIR = '~/parts/0393/export'
 STEP_PARTS='~/parts/0393/export/step_parts'
 #DIR_LIST = ["parts","subassy_flat"]
 ASSEMBLY_PATH = ""
+ASSEMBLY_SUFFIX = "-ASSY"
 INFO_DIR = "info"
 X3D_DIR = "x3d"
 X3D_EXT = ".x3d"
@@ -1086,30 +1087,46 @@ def generateAssemblyX3d(assembly_path,
     if assembly_path:    
         assName,_ =  os.path.splitext(os.path.basename(assembly_path))
     else:
-        assName= FreeCAD.activeDocument().Objects[0].Label   
-    x3dFile = os.path.join(ROOT_DIR,X3D_DIR,assName + X3D_EXT) # currently in the same directory as parts
+        assName= FreeCAD.activeDocument().Objects[0].Label
+    ass_with_suffix = assName
+    if not ass_with_suffix.endswith(ASSEMBLY_SUFFIX):
+        ass_with_suffix = assName + ASSEMBLY_SUFFIX       
+    x3dFile = os.path.join(ROOT_DIR,X3D_DIR, ass_with_suffix + X3D_EXT) # currently in the same directory as parts
     x3dNode = et.Element('x3d')
     x3dNode.set('profile', 'Interchange')
     x3dNode.set('version', '3.3')
     sceneNode = et.SubElement(x3dNode, 'Scene')
     # Including file with (manually created)  NavInfo, Cameras, etc that should not be overwritten when regenerating assembly model
     inlineNode = et.SubElement(sceneNode, 'Inline')
-    inlineNode.set('id', assName + '_config')
-    inlineNode.set('url',assName + '_config'+ X3D_EXT)
-    inlineNode.set('nameSpaceName',assName)
+    inlineNode.set('id', ass_with_suffix + '_config')
+    inlineNode.set('url',ass_with_suffix + '_config'+ X3D_EXT)
+    inlineNode.set('nameSpaceName', ass_with_suffix )
 
     modelNode = et.SubElement(sceneNode, 'Transform')
-    modelNode.set('id','transform_'+assName)
+    modelNode.set('id','transform_'+ass_with_suffix)
     modelNode.set('translation','%f %f %f'%(0,0,0))
     modelNode.set('rotation','%f %f %f %f'%(0,0,0,0))
 
     defined_parts = {} # for each defined part holds index (for ID generation)
+    #TODO: Reorder parts - smallest (by a product og gyration radii) first
+    volumes=[]
     for i, component in enumerate(components['objects']):
+        rg=component['principal']['RadiusOfGyration']
+        volumes.append((i,rg[0]*rg[1]*rg[2]))
+    volumes=sorted(volumes,key= lambda t: t[1])    
+    
+#    for i, component in enumerate(components['objects']):
+    for i, _ in volumes:
         transformations = components['transformations'][i] # same structure as candidates, missing - {}'None'
         if not transformations:
             print("Component %d does not have any matches, ignoring. Candidates: %s"%(i,str(components['candidates'][i])))
             continue
         part = transformations.keys()[0]
+        # rename part if there is the same one with ASSEMBLY_SUFFIX
+        part_name = part
+        if ASSEMBLY_SUFFIX and os.path.isfile( os.path.join(ROOT_DIR, X3D_DIR, part + ASSEMBLY_SUFFIX + X3D_EXT)) :
+            part_name = part + ASSEMBLY_SUFFIX
+        
         transformation = transformations[part]    
         bbox=components['solids'][i].BoundBox
         bboxCenter=((bbox.XMax + bbox.XMin)/2,(bbox.YMax + bbox.YMin)/2,(bbox.ZMax + bbox.ZMin)/2)
@@ -1123,30 +1140,30 @@ def generateAssemblyX3d(assembly_path,
         else:
             defined_parts[part] = 0
         switchNode = et.SubElement(modelNode, 'Switch')
-        switchNode.set('id','switch_'+part+":"+str(defined_parts[part]))
-        switchNode.set('class','switch_'+part)
+        switchNode.set('id','switch_'+part_name+":"+str(defined_parts[part]))
+        switchNode.set('class','switch_'+part_name)
         switchNode.set('whichChoice','0')
         transformNode = et.SubElement(switchNode, 'Transform')
-        transformNode.set('id','transform_'+part+":"+str(defined_parts[part]))
-        transformNode.set('class','transform_'+part)
+        transformNode.set('id','transform_'+part_name+":"+str(defined_parts[part]))
+        transformNode.set('class','transform_'+part_name)
         transformNode.set('translation','%f %f %f'%transform['translation'])
         transformNode.set('rotation','%f %f %f %f'%transform['rotation'])
         groupNode = et.SubElement(transformNode, 'Group')
-        groupNode.set('id','group_'+part+":"+str(defined_parts[part]))
-        groupNode.set('class','group_'+part)
+        groupNode.set('id','group_'+part_name+":"+str(defined_parts[part]))
+        groupNode.set('class','group_'+part_name)
         groupNode.set('bboxSize','%f %f %f'%bboxSize)
         groupNode.set('bboxCenter','%f %f %f'%bboxCenter)
         
         if defined_parts[part]:
-            groupNode.set('USE', part)
+            groupNode.set('USE', part_name)
         else:
-            groupNode.set('DEF', part)
+            groupNode.set('DEF', part_name)
             inlineNode = et.SubElement(groupNode, 'Inline')
-            inlineNode.set('id','inline_'+part+":"+str(defined_parts[part]))
-            inlineNode.set('class','inline_'+part)
-#            inlineNode.set('url',os.path.join(X3D_DIR,part + X3D_EXT))
-            inlineNode.set('url',part + X3D_EXT)
-            inlineNode.set('nameSpaceName',part)
+            inlineNode.set('id','inline_'+part_name+":"+str(defined_parts[part]))
+            inlineNode.set('class','inline_'+part_name)
+#            inlineNode.set('url',os.path.join(X3D_DIR,part_name + X3D_EXT))
+            inlineNode.set('url',part_name + X3D_EXT)
+            inlineNode.set('nameSpaceName',part_name)
 
     oneliner= et.tostring(x3dNode)
     reparsed = minidom.parseString(oneliner)
@@ -1212,7 +1229,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
     x3d_root_path =   ""
     step_parts_path = ""
     log_file =        ""
-    
+    assembly_suffix = ""
     
     precision =          0.0001
     precision_area =     0.001
@@ -1314,6 +1331,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         config.set('paths', 'x3d_root_path',   self.x3d_root_path)
         config.set('paths', 'step_parts_path', self.step_parts_path)
         config.set('paths', 'log_file',        self.log_file)
+        config.set('paths', 'assembly_suffix', self.assembly_suffix)
         try:
             config.add_section('precisions')
         except:
@@ -1344,6 +1362,10 @@ class X3dStepAssyDialog(QtGui.QWidget):
             self.log_file =        config.get('paths', 'log_file')
         except:
             self.log_file =        ""
+        try:     
+            self.assembly_suffix = config.get('paths', 'assembly_suffix' )
+        except:
+            self.assembly_suffix =  ASSEMBLY_SUFFIX
         try:     
             self.precision=          float(config.get('precisions', 'precision'))
         except:
@@ -1387,6 +1409,12 @@ class X3dStepAssyDialog(QtGui.QWidget):
         label_step_parts =    QtGui.QLabel("Step parts directory")
         self.step_parts_btn = QtGui.QPushButton(self.get_path_text(self.step_parts_path))
         self.step_parts_btn.setToolTip("Select directory containing all the parts STEP models. Will scan sub-directories")
+
+        label_assembly_suffix =           QtGui.QLabel("Assembly suffix")
+        self.lineedit_assembly_suffix =   QtGui.QLineEdit()
+        self.lineedit_assembly_suffix.setText  (self.assembly_suffix)
+        self.lineedit_assembly_suffix.setToolTip("Add this suffix to the assembly name when generating X3D, inline files with such suffix instead of the base ones")
+        
         self.help_btn =       QtGui.QPushButton("?")
         self.help_btn.setToolTip("Show description of this program")
         self.execute_btn  =   QtGui.QPushButton("Convert")
@@ -1427,6 +1455,8 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.x3d_root_btn.clicked.connect(self.selectX3dRoot)
         self.step_parts_btn.clicked.connect(self.selectStepParts)
         
+        self.lineedit_assembly_suffix.editingFinished.connect  (self.editedAssemblySuffix)
+        
         self.lineedit_precision.editingFinished.connect         (self.editedPrecision)
         self.lineedit_precision_area.editingFinished.connect    (self.editedPrecisionArea)
         self.lineedit_precision_volume.editingFinished.connect  (self.editedPrecisionVolume)
@@ -1455,25 +1485,28 @@ class X3dStepAssyDialog(QtGui.QWidget):
         layout.addWidget(label_log_file,                   3, 0)
         layout.addWidget(self.log_file_btn,                3, 1, 1, 3)
         
-        layout.addWidget(label_precision,                  4, 0)
-        layout.addWidget(self.lineedit_precision,          4, 1, 1, 1)
+        layout.addWidget(label_assembly_suffix,            4, 0)
+        layout.addWidget(self.lineedit_assembly_suffix,    4, 1, 1, 1)
         
-        layout.addWidget(label_precision_area,             5, 0)
-        layout.addWidget(self.lineedit_precision_area,     5, 1, 1, 1)
+        layout.addWidget(label_precision,                  5, 0)
+        layout.addWidget(self.lineedit_precision,          5, 1, 1, 1)
         
-        layout.addWidget(label_precision_volume,           6, 0)
-        layout.addWidget(self.lineedit_precision_volume,   6, 1, 1, 1)
+        layout.addWidget(label_precision_area,             6, 0)
+        layout.addWidget(self.lineedit_precision_area,     6, 1, 1, 1)
         
-        layout.addWidget(label_precision_gyration,         7, 0)
-        layout.addWidget(self.lineedit_precision_gyration, 7, 1, 1, 1)
+        layout.addWidget(label_precision_volume,           7, 0)
+        layout.addWidget(self.lineedit_precision_volume,   7, 1, 1, 1)
         
-        layout.addWidget(label_precision_inside,           8, 0)
-        layout.addWidget(self.lineedit_precision_inside,   8, 1, 1, 1)
+        layout.addWidget(label_precision_gyration,         8, 0)
+        layout.addWidget(self.lineedit_precision_gyration, 8, 1, 1, 1)
         
-        layout.addWidget(self.help_btn,                    9, 0)
-        layout.addWidget(self.offsets_btn,                 9, 1)
-        layout.addWidget(self.execute_btn,                 9, 2)
-        layout.addWidget(self.bom_btn,                     9, 3)
+        layout.addWidget(label_precision_inside,           9, 0)
+        layout.addWidget(self.lineedit_precision_inside,   9, 1, 1, 1)
+        
+        layout.addWidget(self.help_btn,                    10, 0)
+        layout.addWidget(self.offsets_btn,                 10, 1)
+        layout.addWidget(self.execute_btn,                 10, 2)
+        layout.addWidget(self.bom_btn,                     10, 3)
         
         self.setLayout(layout)
  
@@ -1516,6 +1549,10 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.step_parts_btn.setText(self.get_path_text(self.step_parts_path))
         self.saveSettings()
         
+    def editedAssemblySuffix(self):
+        self.assembly_suffix = self.lineedit_assembly_suffix.text()
+        self.saveSettings()
+            
     def editedPrecision(self):
         txt = self.lineedit_precision.text()
         try:
@@ -1650,6 +1687,8 @@ class X3dStepAssyDialog(QtGui.QWidget):
         PRECISION_VOLUME =   self.precision_volume
         PRECISION_GYRATION = self.precision_gyration
         PRECISION_INSIDE =   self.precision_inside
+        ASSEMBLY_SUFFIX =    self.assembly_suffix
+
 
         self.saveSettings()
 
