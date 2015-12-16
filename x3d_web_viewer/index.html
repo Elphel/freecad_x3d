@@ -1,0 +1,37 @@
+<!DOCTYPE HTML>
+<html>
+<head>   
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="x3dom-1.7.0/x3dom.css">
+    <link rel="stylesheet" href="viewmodel.css">
+    <script src="jquery-2.1.4.min.js"></script>
+    <script src="bootstrap/js/bootstrap.min.js"></script>
+    <script type='text/javascript' src='x3dom-1.7.0/x3dom.js'> </script>
+    <script src="viewmodel.js"></script>
+</head>
+<body>
+    <div id='main'>
+<!--        <x3d id='x3d_canvas' width='700px' height='600px' showProgress="true" showStat="true" showLog="true">
+            <scene>
+                <navigationinfo id="navi" type='"examine" "any"' ></navigationinfo>
+                <Viewpoint fieldOfView='0.2'></Viewpoint>
+                <inline id='topinline' nameSpaceName="foo" url="models/nc393_07_flat_noassy.x3d" onLoad = "document.getElementById('x3d_canvas').runtime.showAll()"></inline>
+            </scene> 
+        </x3d>-->    
+        <div id='thrd'>
+            <div class="dropdown">
+                <button class="btn-my dropdown-toggle btn nooutline" data-toggle="dropdown" href="#">View <span class="caret"></span></button>
+                <ul class="dropdown-menu" style="padding:0px">
+                    <li id="v1">view 1 (+<b>x</b>)</li>
+                    <li id="v2">view 2 (&minus;<b>x</b>)</li>
+                    <li id="v3">view 3 (+<b>y</b>)</li>
+                    <li id="v4">view 4 (&minus;<b>y</b>)</li>
+                    <li id="v5">view 5 (+<b>z</b>)</li>
+                    <li id="v6">view 6 (&minus;<b>z</b>)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div id="test:5" secretvalue='-4'></div>
+</body>
+</html>
