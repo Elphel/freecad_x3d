@@ -1,0 +1,8 @@
+#INSTALL:
+* Copy to a known place
+
+#USE:
+* http://.../x3d_web_viewer/index.html?model=[path-to-x3d-model]
+
+#NOTES:
+* Works with x3d models of specific structure
