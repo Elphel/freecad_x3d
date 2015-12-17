@@ -13,6 +13,7 @@ var elphel_wiki_prefix = "http://wiki.elphel.com/index.php?search="
 var nobuttons = false;
 var animate = false;
 var settings_file = "settings.xml";
+var path = "";
 
 function resize(){
     var w = $(window).width();
@@ -350,13 +351,22 @@ function showBOM(){
             e.stopPropagation();
         });
         
-        btn_link_to_wiki = $("<a>",{href:elphel_wiki_prefix+tmp_nsn,class:"btn btn-default btn-sm",title:"Elphel Wiki docs"}).html("<span class=\"glyphicon glyphicon-link\" aria-hidden=\"true\"></span>").css({padding:"7px 13px 7px 13px",margin:"6px"});
+        btn_link_open = $("<a>",{href:"?model="+path+"/"+tmp_nsn+".x3d",class:"btn btn-default btn-sm",title:"Open in new window"}).html("<span class=\"glyphicon glyphicon-open\" aria-hidden=\"true\"></span>").css({padding:"7px 13px 7px 13px",margin:"6px 0px 6px 6px"});
         
-        btn_link_to_wiki.click(function(e){
-            window.location.href = $(e.target).attr('href');
+        btn_link_open.click(function(e){
+            window.location.href = $(this).attr('href');
         });
         
-        ele_ul.append($("<li>").append(btn_subpart.css({display:"inline"})).append(btn_link_to_wiki.css({display:"inline"})).css({padding:"3px","min-width":"100px",width:"100px"}));
+        btn_link_to_wiki = $("<a>",{href:elphel_wiki_prefix+tmp_nsn,class:"btn btn-default btn-sm",title:"Elphel Wiki docs"}).html("<span class=\"glyphicon glyphicon-book\" aria-hidden=\"true\"></span>").css({padding:"7px 13px 7px 13px",margin:"6px"});
+        
+        btn_link_to_wiki.click(function(e){
+            window.location.href = $(this).attr('href');
+        });
+        
+        ele_ul.append($("<li>").append(btn_subpart.css({display:"inline"}))
+                               .append(btn_link_open.css({display:"inline"}))
+                               .append(btn_link_to_wiki.css({display:"inline"}))
+                               .css({padding:"3px","min-width":"100px",width:"150px"}));
         
         //build a list for unique and multiple parts
         for(var j=0;j<=sublist.length;j++){
@@ -484,14 +494,31 @@ function update_info(name,state,cmd){
         case "left-click":
             if (state=="normal"){
                 var pn = $("<span>").html(name);
-                var hide_btn = $("<button>",{id:"info_hide",title:"hide parts",class:"btn btn-default btn-danger btn-sm nooutline"}).attr("nsn",name).html("<span class=\"glyphicon glyphicon-remove\" aria-hidden=\"true\"></span>").css({
+                var open_btn = $("<a>",{
+                    id:"info_open",
+                    title:"open part in new window",
+                    class:"btn btn-default btn-sm nooutline"    
+                }).attr("nsn",name).html("<span class=\"glyphicon glyphicon-open\" aria-hidden=\"true\"></span>").css({
                     padding: "8px 11px 7px 11px",
                     margin: "0px 0px 0px 10px"
                 });
+                
+                open_btn.attr("href","?model="+path+"/"+name+".x3d");
+                
+                var hide_btn = $("<button>",{
+                    id:"info_hide",
+                    title:"hide parts",
+                    class:"btn btn-default btn-danger btn-sm nooutline"    
+                }).attr("nsn",name).html("<span class=\"glyphicon glyphicon-remove\" aria-hidden=\"true\"></span>").css({
+                    padding: "8px 11px 7px 11px",
+                    margin: "0px 0px 0px 10px"
+                });
+                
                 hide_btn.click(function(){
                     model_run_cmd(name,"info-hide-click");
                 });
-                $("#info").append(pn).append($("<span>").append(hide_btn));
+                
+                $("#info").append(pn).append($("<span>").append(open_btn)).append($("<span>").append(hide_btn));
             }
             break;
         default: return false;
@@ -537,14 +564,7 @@ function model_run_cmd(name,cmd){
                 $(".btn-subpart[nsn="+name+"]").addClass("btn-success");
             }
             if ((state=="selected")||(state=="superselected")){
-                $("Switch").each(function(){
-                    $(this).find("Material").attr("transparency",0.1);
-                    if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
-                        $(this).attr("state","normal");
-                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
-                    }
-                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
-                });
+                model_run_cmd(name,"normalize");
             }
             break;
         case "click-int-all":
@@ -626,15 +646,18 @@ function model_run_cmd(name,cmd){
             }
             break; 
             case "info-hide-click":
-                $("Switch").each(function(){
-                    $(this).find("Material").attr("transparency",0.1);
-                    if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
-                        $(this).attr("state","normal");
-                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
-                    }
-                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
-                });
+                model_run_cmd(name,"normalize");
                 model_run_cmd(name,"right-click");
+            break;
+        case "normalize":
+            $("Switch").each(function(){
+                $(this).find("Material").attr("transparency",0.1);
+                if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
+                    $(this).attr("state","normal");
+                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                }
+                $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
+            });                
             break;
         default: 
             return false;
@@ -691,16 +714,20 @@ function btn_subpart_enableAll(){
 }
 
 function parseURL() {
-  var parameters=location.href.replace(/\?/ig,"&").split("&");
-  for (var i=0;i<parameters.length;i++) parameters[i]=parameters[i].split("=");
-  for (var i=1;i<parameters.length;i++) {
-    switch (parameters[i][0]) {
-      case "model": model = parameters[i][1];break;
-      case "nobuttons": nobuttons = true;break;
-      case "animate": animate = true;break;
-      //case "settings": settings_file = parameters[i][1];break;
+    var parameters=location.href.replace(/\?/ig,"&").split("&");
+    for (var i=0;i<parameters.length;i++) parameters[i]=parameters[i].split("=");
+    for (var i=1;i<parameters.length;i++) {
+        switch (parameters[i][0]) {
+        case "model": model = parameters[i][1];break;
+        case "nobuttons": nobuttons = true;break;
+        case "animate": animate = true;break;
+        //case "settings": settings_file = parameters[i][1];break;
+        }
     }
-  }
-  settings_file = model.slice(0,-3)+"xml";
-  console.log("Opening model: "+model);
+    var index = model.lastIndexOf("/");
+    if (index>0){
+        path = model.substr(0,index);
+    }
+    settings_file = model.slice(0,-3)+"xml";
+    console.log("Opening model: "+model);
 }
