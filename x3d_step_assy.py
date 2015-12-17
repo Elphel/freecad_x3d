@@ -521,7 +521,11 @@ def colorMatchCandidate(assy_object, candidates, info_dict, precision = PRECISIO
     """
     colored_candidates={}
     if  candidates:
-        assy_color_center_area = assy_object["colorCenters"]
+        try:
+            assy_color_center_area = assy_object["colorCenters"]
+        except:
+            print ("colorMatchCandidate(), assy_object = ",assy_object)
+            assy_color_center_area = {}
         cand_matches=[]
         for candidate in candidates:
             matched_colors=[]
@@ -1316,7 +1320,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         if mode == "assy":
             return "Active FreeCAD document"
         elif mode == "log":
-            return "none" # stdout"
+            return "stdout"
         else:
             return "not set"
                  
@@ -1836,4 +1840,7 @@ reload (x3d_step_assy)
 form = x3d_step_assy.X3dStepAssyDialog()
 form.show()
 
+or just run conversion from the command line in Python console 
+x3d_step_assy.generateAssemblyX3d("") #or with path
+x3d_step_assy.showFailedComponents()
 """
