@@ -11,6 +11,8 @@ var model = "Undefined";
 var NSN = "m";
 var elphel_wiki_prefix = "http://wiki.elphel.com/index.php?search="
 var nobuttons = false;
+var animate = false;
+var settings_file = "settings.xml";
 
 function resize(){
     var w = $(window).width();
@@ -33,6 +35,8 @@ var resizeTimer;
 var moveTimeSet = 0;
 var moveTimeStamp;
 
+var showdefault = 0;
+
 $(function(){
     
     $(window).resize(function(){
@@ -42,10 +46,10 @@ $(function(){
     
     //"model" and some other parameters
     parseURL();
-    
+        
     //create and init x3d canvas
     var x3d_cnv = $("<x3d>",{
-        id:"x3d_canvas",width:"700px",height:"600px"
+        id:"x3d_canvas",width:"700px",height:"600px",showLog:"false"
     }).css({
         position:"absolute",
         border: "1px solid gray",
@@ -53,17 +57,49 @@ $(function(){
         outline: "none"        
     }).addClass("nooutline");
     
+    x3d_cnv.click(function(){
+        stop_animation();
+    });
+    
     var x3d_cnv_ni = $("<navigationinfo>",{id:"navi",type:"'examine' 'any'"});
-    var x3d_cnv_vp = $("<Viewpoint>").attr("fieldOfView",0.2);
+    var x3d_cnv_vp = $("<Viewpoint>").attr("fieldOfView","0.2");
+    
     var x3d_cnv_in = $("<inline>",{
         id:"topinline",
         nameSpaceName:NSN,
-        url: model,
-        onLoad:"document.getElementById('x3d_canvas').runtime.showAll()"
+        url: model
+        //onLoad:"document.getElementById('x3d_canvas').runtime.showAll()"
     });
     
-    x3d_cnv.append($("<Scene>").append(x3d_cnv_ni).append(x3d_cnv_vp).append(x3d_cnv_in));
-        
+    var x3d_cnv_trans = $("<Transform DEF='ball'>");
+    
+    var x3d_cnv_anim = $("\
+<timeSensor DEF='time' cycleInterval='50' loop='true'></timeSensor>\
+<orientationInterpolator DEF='move' key='0 0.5 1' keyValue='0 0 1 0 0 0 1 3.14159 0 0 1 6.28317'></orientationInterpolator>\
+<Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\
+<Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\
+");
+    
+    x3d_cnv_trans.append(x3d_cnv_in);
+    
+    if (animate){
+        x3d_cnv_trans.append(x3d_cnv_anim);
+    }
+    
+    var scene = $("<Scene>");
+    scene.append(x3d_cnv_trans);
+    x3d_cnv.append(scene);
+            
+    var settings = $("<div>").load(settings_file,function(response,status,xhr){
+        if (xhr.status==200){
+            var xml = $.parseXML(response);
+            x3d_cnv_ni = $(xml).find("navigationinfo");
+            x3d_cnv_vp = $(xml).find("Viewpoint");
+            showdefault = 1;
+        }
+        scene.prepend(x3d_cnv_vp).prepend(x3d_cnv_ni);
+    });
+    
     $("#main").css({
         position:"absolute",
         width: x3d_cnv.width()+"px",
@@ -81,8 +117,9 @@ $(function(){
     $(document).load(function(){
         element.runtime.enterFrame = function() {
             if (showall==1) {
-                element.runtime.showAll();
                 element.runtime.examine();
+                element.runtime.showAll("negY");
+                if (showdefault) element.runtime.resetView();
                 run();
             }
             if (showall>0) showall--;
@@ -186,7 +223,22 @@ $(function(){
     });
     
     $("#main").append(hlp).append(hlp_text);
-         
+    
+    //info popup
+    var info = $("<div>",{id:"info"}).css({
+        position:"absolute",
+        bottom:"3px",
+        right:"3px",
+        "border-radius":"2px",
+        border: "1px solid gray",
+        color:"white",
+        "font-size":"1.2em",
+        padding:"10px 10px 10px 10px",
+        background:"rgba(50,50,50,0.9)"
+    });
+    
+    $("#main").append(info);
+    
     rst_model = $("<button>",{id:"reset_model"}).addClass("btn-my btn nooutline").html("reset model").css({
         position: "absolute",
         top: "3px",
@@ -204,7 +256,8 @@ $(function(){
             $(".btn-subpart[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").attr("selected",true);
         });
         btn_subpart_enableAll();
-        element.runtime.showAll("negZ");
+        element.runtime.showAll("negY");
+        if (showdefault) element.runtime.resetView();
     });
     
     $("#main").append(rst_model);
@@ -223,6 +276,8 @@ $(function(){
 
     $("#v5").css({cursor:"pointer"}).click(function(){element.runtime.showAll("posZ");});
     $("#v6").css({cursor:"pointer"}).click(function(){element.runtime.showAll("negZ");});
+    
+    $("#v7").css({cursor:"pointer"}).click(function(){element.runtime.resetView();});
        
 });
 
@@ -373,6 +428,7 @@ function bindCanvas(){
     
     var canvas = document.getElementById("x3d_canvas");
     canvas.addEventListener("touchstart",function(e){
+        stop_animation();
         blockclick = false;
         moveTimeStamp = getTimeStamp();
     });
@@ -403,6 +459,10 @@ function bindCanvas(){
     });        
 }
 
+function stop_animation(){
+    $("timeSensor").remove();
+}
+
 function getTimeStamp(){
     var d = new Date();
     return d.getTime();
@@ -418,8 +478,29 @@ function unblockclique(){
     //moveTimerSet = false;
 }
 
+function update_info(name,state,cmd){
+    $("#info").empty();
+    switch(cmd){
+        case "left-click":
+            if (state=="normal"){
+                var pn = $("<span>").html(name);
+                var hide_btn = $("<button>",{id:"info_hide",title:"hide parts",class:"btn btn-default btn-danger btn-sm nooutline"}).attr("nsn",name).html("<span class=\"glyphicon glyphicon-remove\" aria-hidden=\"true\"></span>").css({
+                    padding: "8px 11px 7px 11px",
+                    margin: "0px 0px 0px 10px"
+                });
+                hide_btn.click(function(){
+                    model_run_cmd(name,"info-hide-click");
+                });
+                $("#info").append(pn).append($("<span>").append(hide_btn));
+            }
+            break;
+        default: return false;
+    }
+}
+
 function model_run_cmd(name,cmd){
     var state = $("Switch[nsn="+name+"]").attr("state");
+    update_info(name,state,cmd);
     switch(cmd){
         case "right-click":
             //update status to "disabled"
@@ -544,6 +625,17 @@ function model_run_cmd(name,cmd){
                 model_run_cmd(name,"click-int-all");
             }
             break; 
+            case "info-hide-click":
+                $("Switch").each(function(){
+                    $(this).find("Material").attr("transparency",0.1);
+                    if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
+                        $(this).attr("state","normal");
+                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                    }
+                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
+                });
+                model_run_cmd(name,"right-click");
+            break;
         default: 
             return false;
     }
@@ -605,7 +697,10 @@ function parseURL() {
     switch (parameters[i][0]) {
       case "model": model = parameters[i][1];break;
       case "nobuttons": nobuttons = true;break;
+      case "animate": animate = true;break;
+      //case "settings": settings_file = parameters[i][1];break;
     }
   }
+  settings_file = model.slice(0,-3)+"xml";
   console.log("Opening model: "+model);
 }

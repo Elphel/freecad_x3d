@@ -68,3 +68,13 @@ body{
     /*padding:5px 15px 5px 15px;*/
     border: 1px solid rgba(50,50,50,0.5);
 }
+
+#help-text td{
+    padding:1px 15px 1px 15px;
+}
+
+#x3dom_logdiv{
+    position:absolute;
+    bottom:1px;
+    left:1px;
+}
