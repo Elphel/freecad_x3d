@@ -145,6 +145,45 @@ def verticesToCheck(solid):
         lv.append((v.X,v.Y,v.Z))
     return lv
 
+def  getBoundBox(freecadObjects):
+    """
+    Calculate BoundBox for all shapes in the document
+    @param freecadObjects - list of FreeCAD objects or all solids/shells
+    @return FreeCAD.BoundBox object for the whole document
+    """
+    shells =[]
+    for o in freecadObjects:
+        if hasattr(o, "Shape"):
+            shape=o.Shape
+            for shell in shape.Shells: # solids and open shells
+                shells.append(shell)
+        elif hasattr(o, "BoundBox"):
+            shells.append(o)
+    bBox=None
+            
+    for shell in shells:
+        thisBBox = shell.BoundBox
+        if not bBox:
+            bBox = FreeCAD.BoundBox(thisBBox.XMin,thisBBox.YMin,thisBBox.ZMin,
+                                    thisBBox.XMax,thisBBox.YMax,thisBBox.ZMax)
+        else:
+            bBox = FreeCAD.BoundBox(min(thisBBox.XMin,bBox.XMin),min(thisBBox.YMin,bBox.YMin),min(thisBBox.ZMin,bBox.ZMin),
+                                    max(thisBBox.XMax,bBox.XMax),max(thisBBox.YMax,bBox.YMax),max(thisBBox.ZMax,bBox.ZMax))
+                        
+    return bBox
+ 
+def bBoxToX3d(bBox):
+    """
+    Convert FreeCAD BoundBox to X3D representation (center, size)
+    @param bBox - FreeCAD BoundBox object
+    @return dictionary of {'center':(xc,yc,zc), size:(xs,ys,zs)}
+    """
+    return {'center':((bBox.XMax + bBox.XMin)/2,(bBox.YMax + bBox.YMin)/2,(bBox.ZMax + bBox.ZMin)/2),
+            'size':  ( bBox.XMax - bBox.XMin,    bBox.YMax - bBox.YMin,    bBox.ZMax - bBox.ZMin)}
+
+    
+    
+    #FreeCAD.BoundBox(0,0,0,0,0,0)
 def create_file_info_nogui(shape, fname=""):
     """
     A no-Gui version of the create_file_info, rather useless now as the color
@@ -191,7 +230,7 @@ def create_file_info(freecadObjects, fname=""):
     """
     Collect information about each part/solid to be used for comparison between
     assembly objects and parts
-    @param shape - FreeCAD Shape, containing one or more solids
+    @param freecadObjects - list of FreeCAD objects
     @param fname - source file path
     @return a pair of a list of info for each solid (as a dictionary) and a
               list of solids in the shape
@@ -395,7 +434,7 @@ def get_info_files(dir_list = None):
         info_dict[name] = pickle.load(open(info_path, "rb"))
         progress_bar.next()
     progress_bar.stop()
-    FreeCAD.Console.PrintMessage("get_info_files() - loaded");
+#    FreeCAD.Console.PrintMessage("get_info_files() - loaded"); #Rare FreeCAD crash?
 
     #Put largest element of multi-solid parts as the [0] index. 
     for k in info_dict:
@@ -409,7 +448,7 @@ def get_info_files(dir_list = None):
             print ("Largest solid is number %d"%(mi))
             if mi>0:
                 o.insert(0,o.pop(mi))
-    FreeCAD.Console.PrintMessage("get_info_files() - largest made first");
+#    FreeCAD.Console.PrintMessage("get_info_files() - largest made first"); # rare FreeCAD crash?
     return info_dict
 
 
@@ -849,7 +888,7 @@ def getShapeNode(vertices, faces, diffuseColor = None, main_color_index = 0, col
         materialNode.set('diffuseColor', "%f %f %f" % tuple(diffuseColor[main_color_index * 3: main_color_index * 3 + 3]))
     return shapeNode
 
-def exportX3D(objects, filepath,  id="part", colorPerVertex=False):
+def exportX3D(objects, filepath,  partName="", bbox = None, colorPerVertex=False):
     """
     Export given list of objects to a X3D file.
     @param objects - a list of dictionaries in the following format:
@@ -860,8 +899,11 @@ def exportX3D(objects, filepath,  id="part", colorPerVertex=False):
             }
     @param filepath - os path of the file to save X3D data
     @param id - id set for the X3D Group node wrapping all the objects in the file
+    @param bbox - optional bound box as a dictionary {'center':(xc,yc,zc), size:(xs,ys,zs)}
+
     @param colorPerVertex - True: specify color per erach vertex, False - for each face (reduces file size)
     """
+    
     progress_bar = Base.ProgressIndicator()
     progress_bar.start("Saving objects to X3D file %s ..."%(filepath), len(objects))
 
@@ -869,8 +911,21 @@ def exportX3D(objects, filepath,  id="part", colorPerVertex=False):
     x3dNode.set('profile', 'Interchange')
     x3dNode.set('version', '3.3')
     sceneNode = et.SubElement(x3dNode, 'Scene')
-    groupNode = et.SubElement(sceneNode, 'Group')
-    groupNode.set('id', id)
+    transformNode =et.SubElement(sceneNode, 'Transform') # Empty transform to adjust center for offset models (use bboxCenter)
+    transformNode.set('id', 'transformTop_'+partName)
+    transformNode.set('class', 'transformTop_'+partName)
+#    if bbox:
+#        transformNode.set('translation','%f %f %f'%(-bbox['center'][0],-bbox['center'][1],-bbox['center'][2]))
+#    else:    
+    transformNode.set('translation','%f %f %f'%(0,0,0))
+    transformNode.set('rotation','%f %f %f %f'%(0,0,0,0))
+    
+    groupNode = et.SubElement(transformNode, 'Group')
+    groupNode.set('id', 'groupTop_'+partName)
+    groupNode.set('class', 'groupTop_'+partName)
+    if bbox:
+        groupNode.set('bboxSize','%f %f %f'%bbox['size'])
+        groupNode.set('bboxCenter','%f %f %f'%bbox['center'])
 
     for o in objects:
         shapeNode = getShapeNode(o["points"], o["faces"], o["color"], o["main_color_index"], colorPerVertex)
@@ -903,7 +958,8 @@ def prepareX3dExport(freecadObjects, fname=""):
     if fname:
         txt += " in "+fname
     progress_bar.start("Generating objects%s to export to X3D ..."%(txt), len(freecadObjects))
-
+    xyzMin=None
+    xyzMax=None
     for o in freecadObjects:
         progress_bar.next() # True) # have to do it here as 'for' uses 'continue', True - enable ESC to abort
         if (not o.ViewObject) or (o.ViewObject.Visibility):
@@ -983,8 +1039,10 @@ def generatePartsX3d(dir_list = [STEP_PARTS], colorPerVertex = COLOR_PER_VERTEX)
             FreeCAD.loadFile(step_file) # os.path.join(ROOT_DIR,step_file))
             doc = FreeCAD.activeDocument()
             doc.Label = partName
+            
             x3d_objects = prepareX3dExport(doc.Objects, step_file) # step_file needed just for progress bar
-            exportX3D(x3d_objects, x3dFile, id="part_"+partName, colorPerVertex=colorPerVertex)
+            bboxX3d= bBoxToX3d(getBoundBox(doc.Objects))
+            exportX3D(x3d_objects, x3dFile, partName = partName, bbox = bboxX3d, colorPerVertex=colorPerVertex)
             FreeCAD.closeDocument(doc.Name)
             FreeCADGui.updateGui()
             numExported += 1
@@ -1075,7 +1133,7 @@ def generateAssemblyX3d(assembly_path,
     
     start_time=time.time()
     info_dict = get_info_files(dir_list) # Will (re-) build info files if missing
-    FreeCAD.Console.PrintMessage("generateAssemblyX3d()");
+#    FreeCAD.Console.PrintMessage("generateAssemblyX3d()");
     generatePartsX3d(dir_list = [STEP_PARTS], colorPerVertex = COLOR_PER_VERTEX) # Will only run if files are not there yet
     FreeCAD.Console.PrintMessage("generatePartsX3d() Done");
     if not components:
@@ -1105,11 +1163,24 @@ def generateAssemblyX3d(assembly_path,
     inlineNode.set('id', ass_with_suffix + '_config')
     inlineNode.set('url',ass_with_suffix + '_config'+ X3D_EXT)
     inlineNode.set('nameSpaceName', ass_with_suffix )
-
-    modelNode = et.SubElement(sceneNode, 'Transform')
-    modelNode.set('id','transform_'+ass_with_suffix)
-    modelNode.set('translation','%f %f %f'%(0,0,0))
-    modelNode.set('rotation','%f %f %f %f'%(0,0,0,0))
+    #empty Transform node to move/rotate the whole assembly now translation to -(bounding box center)
+    bboxX3d= bBoxToX3d(getBoundBox(components['solids']))
+    transformNode = et.SubElement(sceneNode, 'Transform')
+    transformNode.set('id','transformTop_'+ass_with_suffix)
+    transformNode.set('class','transformTop_'+ass_with_suffix)
+#    if bboxX3d:
+#        transformNode.set('translation','%f %f %f'%(-bboxX3d['center'][0],-bboxX3d['center'][1],-bboxX3d['center'][2]))
+#    else:    
+    transformNode.set('translation','%f %f %f'%(0,0,0))
+    
+    transformNode.set('rotation','%f %f %f %f'%(0,0,0,0))
+    #Group node to provide a bbox center/size of the whole assembly (and center the view)
+    modelNode = et.SubElement(transformNode, 'Group')
+    modelNode.set('id','groupTop_'+ass_with_suffix)
+    modelNode.set('class','groupTop_'+ass_with_suffix)
+    if bboxX3d:
+        modelNode.set('bboxSize','%f %f %f'%bboxX3d['size'])
+        modelNode.set('bboxCenter','%f %f %f'%bboxX3d['center'])
 
     defined_parts = {} # for each defined part holds index (for ID generation)
     #TODO: Reorder parts - smallest (by a product og gyration radii) first
@@ -1132,9 +1203,7 @@ def generateAssemblyX3d(assembly_path,
             part_name = part + ASSEMBLY_SUFFIX
         
         transformation = transformations[part]    
-        bbox=components['solids'][i].BoundBox
-        bboxCenter=((bbox.XMax + bbox.XMin)/2,(bbox.YMax + bbox.YMin)/2,(bbox.ZMax + bbox.ZMin)/2)
-        bboxSize=  ( bbox.XMax - bbox.XMin,    bbox.YMax - bbox.YMin,    bbox.ZMax - bbox.ZMin)
+        bbox= bBoxToX3d(components['solids'][i].BoundBox)
 
         transform = matrix4ToX3D(transformation)
         rot=transform['rotation']
@@ -1155,8 +1224,9 @@ def generateAssemblyX3d(assembly_path,
         groupNode = et.SubElement(transformNode, 'Group')
         groupNode.set('id','group_'+part_name+":"+str(defined_parts[part]))
         groupNode.set('class','group_'+part_name)
-        groupNode.set('bboxSize','%f %f %f'%bboxSize)
-        groupNode.set('bboxCenter','%f %f %f'%bboxCenter)
+        groupNode.set('bboxSize','%f %f %f'%bbox['size'])
+        groupNode.set('bboxCenter','%f %f %f'%bbox['center'])
+
         
         if defined_parts[part]:
             groupNode.set('USE', part_name)
@@ -1742,7 +1812,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
     def executeMacro(self):
         global COMPONENTS
         COMPONENTS =         None # Start with new ones
-        FreeCAD.Console.PrintMessage("Starting conversion...")
+#        FreeCAD.Console.PrintMessage("Starting conversion...")
         self.preRun()
         if  self.log_file:
             sys.stdout = open(self.log_file,"w")
@@ -1839,6 +1909,7 @@ import x3d_step_assy
 reload (x3d_step_assy)
 form = x3d_step_assy.X3dStepAssyDialog()
 form.show()
+x3d_step_assy.generateAssemblyX3d("") #or with path
 
 or just run conversion from the command line in Python console 
 x3d_step_assy.generateAssemblyX3d("") #or with path
