@@ -14,6 +14,7 @@ var nobuttons = false;
 var animate = false;
 var settings_file = "settings.xml";
 var path = "";
+var inherited_parameters = "";
 
 function resize(){
     var w = $(window).width();
@@ -71,7 +72,7 @@ $(function(){
         url: model
         //onLoad:"document.getElementById('x3d_canvas').runtime.showAll()"
     });
-    
+        
     var x3d_cnv_trans = $("<Transform DEF='ball'>");
     
     var x3d_cnv_anim = $("\
@@ -114,7 +115,7 @@ $(function(){
     var element = document.getElementById('x3d_canvas');
 
     //on load: showAll()?!
-    var showall = 8;
+    var showall = 2;
     $(document).load(function(){
         element.runtime.enterFrame = function() {
             if (showall==1) {
@@ -212,8 +213,15 @@ $(function(){
 <tr>\
     <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='http://www.x3dom.org/documentation/interaction/' style='color:white'>www.x3dom.org</a></td>\
 </tr>\
+<tr>\
+    <td>Source code:</td>\
+</tr>\
+<tr>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='https://github.com/Elphel/freecad_x3d' style='color:white'><img src='http://blog.elphel.com/wp-content/themes/pixelgreen/images/blog-logo.png' style='width:25px;'/> Elphel <img src='https://github.com/fluidicon.png' style='width:25px;'/> github.com</a></td>\
+</tr>\
 </table>\
 ");
+    
     
     hlp.click(function(){
         hlp_text.css({display:""});
@@ -282,10 +290,30 @@ $(function(){
        
 });
 
+var load_counter = 0;
+var load_limit = 1;
+
 function run(){
-    showBOM();
-    bindCanvas();
-    resize();
+    console.log("run2");
+    var top = $("#topinline");
+    var parts_unique = top.find("Inline");
+    console.log(parts_unique.length);
+    load_limit = parts_unique.length;
+    parts_unique.load(function(){
+        console.log("showBOM");
+        load_counter++;
+        if(load_counter==load_limit-1){
+            showBOM();
+            resize();
+            bindCanvas();
+        }
+    });
+    
+    if (load_limit==0){
+        showBOM();
+        resize();
+        bindCanvas();        
+    }
 }
 
 function showBOM(){
@@ -304,6 +332,48 @@ function showBOM(){
     }
     
     var top = $("#topinline");
+    
+    //get top boundary box position
+    var top_groups = top.find("Group");
+    var top_group = $(top_groups[0]);
+    
+    var top_bboxcenter = top_group.prop('bboxCenter');
+    top_bboxcenter = top_bboxcenter.split(" ");
+    var top_bboxsize = top_group.prop('bboxSize');
+    top_bboxsize = top_bboxsize.split(" ");
+    
+    console.log("Top group bboxcenter is at");
+    console.log(top_bboxcenter);
+    
+    top_group.parent().prop("translation",(-top_bboxcenter[0])+" "+(-top_bboxcenter[1])+" "+(-top_bboxcenter[2]));
+    
+    var fov = $("Viewpoint").attr("fieldOfView");
+    
+    console.log("field of view is "+fov);
+    
+    //(top_bboxsize[1]/2) / l = tg a/2
+    fov=fov*0.75;
+    var phi = -0.7;
+    
+    var boxsize;
+    
+    boxsize = Math.max(...top_bboxsize);
+    
+    var view_distance = (boxsize/2)/Math.tan(fov/2);    
+    
+    var view_elevation = view_distance*Math.tan(phi);
+    
+    //$("Viewpoint").attr("position","0 "+view_distance+" 0");
+    //$("Viewpoint").attr("orientation","-1 0 0 1.57080");
+    console.log(view_distance+" "+view_elevation+" "+phi);
+    
+    $("Viewpoint").attr("position","0 "+view_distance+" "+(view_elevation));
+    $("Viewpoint").attr("orientation","-1 0 0 "+(Math.PI/2-phi));
+    showdefault = true;
+    
+    var element = document.getElementById('x3d_canvas');
+    if (showdefault) element.runtime.resetView();
+    
     //upper case was important
     var parts_unique = top.find("Inline");
     //remove the first element -  because of the specific model structure?
@@ -311,6 +381,12 @@ function showBOM(){
     
     //set default transparency?
     parts_unique.find("Material").attr("transparency",0.1);
+    parts_unique.find("Material").prop("transparency",0.1);
+    
+    parts_unique.load(function(){
+        $(this).find("Material").attr("transparency",0.1);
+        $(this).find("Material").prop("transparency",0.1);
+    });
     
     parts_unique.each(function(i){
         var part = $(this);
@@ -351,7 +427,7 @@ function showBOM(){
             e.stopPropagation();
         });
         
-        btn_link_open = $("<a>",{href:"?model="+path+"/"+tmp_nsn+".x3d",class:"btn btn-default btn-sm",title:"Open in new window"}).html("<span class=\"glyphicon glyphicon-open\" aria-hidden=\"true\"></span>").css({padding:"7px 13px 7px 13px",margin:"6px 0px 6px 6px"});
+        btn_link_open = $("<a>",{href:"?"+inherited_parameters+"model="+path+"/"+tmp_nsn+".x3d",class:"btn btn-default btn-sm",title:"Open in new window"}).html("<span class=\"glyphicon glyphicon-open\" aria-hidden=\"true\"></span>").css({padding:"7px 13px 7px 13px",margin:"6px 0px 6px 6px"});
         
         btn_link_open.click(function(e){
             window.location.href = $(this).attr('href');
@@ -496,14 +572,14 @@ function update_info(name,state,cmd){
                 var pn = $("<span>").html(name);
                 var open_btn = $("<a>",{
                     id:"info_open",
-                    title:"open part in new window",
+                    title:"open part in a new window",
                     class:"btn btn-default btn-sm nooutline"    
                 }).attr("nsn",name).html("<span class=\"glyphicon glyphicon-open\" aria-hidden=\"true\"></span>").css({
                     padding: "8px 11px 7px 11px",
                     margin: "0px 0px 0px 10px"
                 });
                 
-                open_btn.attr("href","?model="+path+"/"+name+".x3d");
+                open_btn.attr("href","?"+inherited_parameters+"model="+path+"/"+name+".x3d");
                 
                 var hide_btn = $("<button>",{
                     id:"info_hide",
@@ -724,6 +800,9 @@ function parseURL() {
         //case "settings": settings_file = parameters[i][1];break;
         }
     }
+    if (nobuttons) inherited_parameters += "nobuttons&";
+    if (animate)   inherited_parameters += "animate&";
+    
     var index = model.lastIndexOf("/");
     if (index>0){
         path = model.substr(0,index);
