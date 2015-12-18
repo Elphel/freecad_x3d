@@ -39,8 +39,14 @@ var moveTimeStamp;
 
 var showdefault = 0;
 
+var load_counter = 0;
+var load_limit = 1;
+/*
 $(function(){
-    
+   prerun();
+});
+*/
+function prerun(){
     $(window).resize(function(){
         clearTimeout(resizeTimer);
         resizeTimer = window.setTimeout(resize(),250);
@@ -110,12 +116,11 @@ $(function(){
     
     $("#main").prepend(x3d_cnv);
     
-    resize();
-    
     var element = document.getElementById('x3d_canvas');
 
     //on load: showAll()?!
-    var showall = 2;
+    var showall = 8;
+    
     $(document).load(function(){
         element.runtime.enterFrame = function() {
             if (showall==1) {
@@ -287,43 +292,26 @@ $(function(){
     $("#v6").css({cursor:"pointer"}).click(function(){element.runtime.showAll("negZ");});
     
     $("#v7").css({cursor:"pointer"}).click(function(){element.runtime.resetView();});
-       
-});
-
-var load_counter = 0;
-var load_limit = 1;
+        
+}
 
 function run(){
-    console.log("run2");
-    var top = $("#topinline");
-    var parts_unique = top.find("Inline");
-    console.log(parts_unique.length);
-    load_limit = parts_unique.length;
-    parts_unique.load(function(){
-        console.log("showBOM");
-        load_counter++;
-        if(load_counter==load_limit-1){
-            showBOM();
-            resize();
-            bindCanvas();
-        }
-    });
-    
-    if (load_limit==0){
-        showBOM();
-        resize();
-        bindCanvas();        
-    }
+    console.log("run3");
+    resize();
+    showBOM();
+    bindCanvas();        
 }
 
 function showBOM(){
-    
+        
     //var bom = $("<ul>",{id:"bom",class:"list-group"}).css({
     var bom = $("<table>",{id:"bom"}).css({
         position:"absolute",
         top:"5px",
         left:"705px"
     });
+    
+    resize();
     
     if (nobuttons){
         bom.css({
@@ -382,12 +370,7 @@ function showBOM(){
     //set default transparency?
     parts_unique.find("Material").attr("transparency",0.1);
     parts_unique.find("Material").prop("transparency",0.1);
-    
-    parts_unique.load(function(){
-        $(this).find("Material").attr("transparency",0.1);
-        $(this).find("Material").prop("transparency",0.1);
-    });
-    
+        
     parts_unique.each(function(i){
         var part = $(this);
         var tmp_nsn = this.getAttribute("nameSpaceName");
@@ -483,7 +466,7 @@ function showBOM(){
     });
     
     $("body").append(bom);
-    
+    resize();
 }
 
 var blockclick = false;
