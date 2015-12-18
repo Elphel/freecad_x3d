@@ -211,13 +211,13 @@ $(function(){
     <td>X3DOM controls help:</td>\
 </tr>\
 <tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='http://www.x3dom.org/documentation/interaction/' style='color:white'>www.x3dom.org</a></td>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='http://www.x3dom.org/documentation/interaction/' style='color:white'><img src='http://www.x3dom.org/wp-content/themes/x3domnew/x3dom_logo.png' style='background:rgba(250,250,250,0.8);height:25px;padding:3px'/> www.x3dom.org</a></td>\
 </tr>\
 <tr>\
     <td>Source code:</td>\
 </tr>\
 <tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='https://github.com/Elphel/freecad_x3d' style='color:white'><img src='http://blog.elphel.com/wp-content/themes/pixelgreen/images/blog-logo.png' style='width:25px;'/> Elphel <img src='https://github.com/fluidicon.png' style='width:25px;'/> github.com</a></td>\
+    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='https://github.com/Elphel/freecad_x3d' style='color:white'><img src='http://blog.elphel.com/wp-content/themes/pixelgreen/images/blog-logo.png' style='height:25px;'/> Elphel <img src='https://github.com/fluidicon.png' style='height:25px;'/> github.com</a></td>\
 </tr>\
 </table>\
 ");
