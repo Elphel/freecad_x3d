@@ -83,7 +83,7 @@ function prerun(){
         //onLoad:"document.getElementById('x3d_canvas').runtime.showAll()"
     });
         
-    var x3d_cnv_trans = $("<Transform DEF='ball'>");
+    var x3d_cnv_trans = $("<Transform id='anima' DEF='ball'>");
     
     var x3d_cnv_anim = $("\
 <timeSensor DEF='time' cycleInterval='50' loop='true'></timeSensor>\
@@ -270,6 +270,8 @@ function prerun(){
         model_init();
         element.runtime.showAll("negY");
         if (showdefault) element.runtime.resetView();
+        element.runtime.resetView();
+        if (animate) start_animation();
     });
     
     $("#main").append(rst_model);
@@ -411,7 +413,7 @@ function place_camera(){
         if (showdefault) element.runtime.resetView();
         
         var x3d_cnv_ni = $("NavigationInfo");
-        x3d_cnv_ni.prop("speed",Math.round(Math.sqrt(view_distance)/10));
+        x3d_cnv_ni.prop("speed",Math.round(Math.sqrt(view_distance)/5));
         console.log("speed is "+x3d_cnv_ni.prop("speed"));
         
     }
@@ -628,10 +630,20 @@ function touchmoved(){
 
 function stop_animation(){
     $("timeSensor").remove();
+    $("orientationInterpolator").remove();
+    $("Route").remove();
 }
 
 function start_animation(){
+    console.log("restart animation");    
+    var x3d_cnv_anim = $("\
+<timeSensor DEF='time' cycleInterval='50' loop='true'></timeSensor>\
+<orientationInterpolator DEF='move' key='0 0.5 1' keyValue='0 0 1 0 0 0 1 3.14159 0 0 1 6.28317'></orientationInterpolator>\
+<Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\
+<Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\
+");
     
+    $("#anima").append(x3d_cnv_anim);
 }
 
 function getTimeStamp(){
