@@ -269,8 +269,8 @@ function prerun(){
         btn_subpart_enableAll();
         model_init();
         element.runtime.showAll("negY");
-        if (showdefault) element.runtime.resetView();
-        element.runtime.resetView();
+        //if (showdefault) element.runtime.resetView();
+        //element.runtime.resetView();
         if (animate) start_animation();
     });
     
