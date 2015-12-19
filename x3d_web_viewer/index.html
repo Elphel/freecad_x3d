@@ -4,7 +4,9 @@
     <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="x3dom-1.7.0/x3dom.css">
     <link rel="stylesheet" href="viewmodel.css">
+    <script src="jquery-2.1.4.min.js"></script>
     <script type='text/javascript' src='x3dom-1.7.0/x3dom.js'> </script>
+    <script src="bootstrap/js/bootstrap.min.js"></script>
     <script src="viewmodel.js"></script>
 </head>
 <body>
@@ -32,9 +34,11 @@
         </div>
     </div>
     <div id="test:5" secretvalue='-4'></div>
-    <script src="jquery-2.1.4.min.js"></script>
-    <script src="bootstrap/js/bootstrap.min.js"></script>
     <script>
+        x3dom.runtime.ready = function() {
+            console.log("X3D Ready");
+            //run();
+        }
         prerun();
         resize();
     </script>

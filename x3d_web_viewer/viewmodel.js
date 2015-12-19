@@ -17,6 +17,7 @@ var path = "";
 var inherited_parameters = "";
 
 function resize(){
+    console.log("resize");
     var w = $(window).width();
     var h = $(window).height();
     if (w>h){
@@ -65,12 +66,15 @@ function prerun(){
         outline: "none"        
     }).addClass("nooutline");
     
+    $("#main").prepend(x3d_cnv);
+    
     x3d_cnv.click(function(){
         stop_animation();
     });
     
-    var x3d_cnv_ni = $("<navigationinfo>",{id:"navi",type:"'examine' 'any'"});
-    var x3d_cnv_vp = $("<Viewpoint>").attr("fieldOfView","0.2");
+    var x3d_cnv_ni = $("<NavigationInfo>",{id:"navi",type:"'examine' 'any'",speed:"15",headlight:"true"});
+    
+    var x3d_cnv_vp = $("<Viewpoint>").attr("fieldOfView","0.202");
     
     var x3d_cnv_in = $("<inline>",{
         id:"topinline",
@@ -101,7 +105,7 @@ function prerun(){
     var settings = $("<div>").load(settings_file,function(response,status,xhr){
         if (xhr.status==200){
             var xml = $.parseXML(response);
-            x3d_cnv_ni = $(xml).find("navigationinfo");
+            x3d_cnv_ni = $(xml).find("NavigationInfo");
             x3d_cnv_vp = $(xml).find("Viewpoint");
             showdefault = 1;
         }
@@ -114,13 +118,13 @@ function prerun(){
         height: x3d_cnv.height()+"px"
     });
     
-    $("#main").prepend(x3d_cnv);
-    
     var element = document.getElementById('x3d_canvas');
 
     //on load: showAll()?!
-    var showall = 8;
+    //required minimum?
     
+    var showall = 1;
+        
     $(document).load(function(){
         element.runtime.enterFrame = function() {
             if (showall==1) {
@@ -261,15 +265,9 @@ function prerun(){
     });
     
     rst_model.click(function(){
-        $("Switch").each(function(){
-            $(this).attr("whichChoice",0);
-            $(this).find("Material").attr("transparency",0.1);
-            $(this).attr("state","normal");
-            $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
-            $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
-            $(".btn-subpart[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").attr("selected",true);
-        });
+        model_run_cmd("reset","reset");
         btn_subpart_enableAll();
+        model_init();
         element.runtime.showAll("negY");
         if (showdefault) element.runtime.resetView();
     });
@@ -292,26 +290,141 @@ function prerun(){
     $("#v6").css({cursor:"pointer"}).click(function(){element.runtime.showAll("negZ");});
     
     $("#v7").css({cursor:"pointer"}).click(function(){element.runtime.resetView();});
-        
+       
 }
 
-function run(){
-    console.log("run3");
-    resize();
+function model_init(){
+    removeBOM();
     showBOM();
-    bindCanvas();        
+    resize();
+    //unbindCanvas();
+    //bindCanvas();
+}
+
+var block_load_events = false;
+
+function run(){
+    console.log("run()");
+    var inlines = $.find("Inline");
+    console.log("Found inlines: "+inlines.length);
+    load_limit = inlines.length;
+    load_counter = 0;
+    
+    if (load_limit==1){
+        tmp_inline = $(inlines[0]);
+        tmp_inline.load(function(){
+            run2();
+        });
+    }    
+}
+
+function run2(){
+    console.log("run2()");
+    var inlines = $.find("Inline");
+    console.log("Found new inlines: "+(inlines.length-1));
+    load_limit = inlines.length;
+    
+    for(var i=0;i<inlines.length;i++){
+        tmp_inline = $(inlines[i]);
+        tmp_inline.load(function(){
+            load_counter++;
+            console.log("Loaded "+load_counter);
+            var progress_element = $.find("strong");
+            var progress_counter = $(progress_element).html();
+            progress_counter = progress_counter.split(" ");
+            console.log("x3dom counter = "+progress_counter[1]);
+            if (!block_load_events){
+                if (load_counter==1){
+                    console.log("fire init (1)");
+                    model_init();
+                    //unbindCanvas();
+                    bindCanvas();
+                }                              
+                if (load_counter==(load_limit-2)){
+                    console.log("fire init (limit-2)");
+                    model_init();
+                    //unbindCanvas();
+                    bindCanvas();
+                }              
+            }
+        });
+    }
+    if (inlines.length==1) {
+        bindCanvas();
+        model_init();
+    }
+}
+
+
+function removeBOM(){
+    var top = $("#topinline");
+    top.find("Inline").off("click");
+    top.find("button").off("click");
+    top.find("a").off("click");
+    $("#bom").remove();
+}
+
+function place_camera(){
+    
+    var top = $("#topinline");
+    //get top boundary box position
+    var top_groups = top.find("Group");
+    
+    if (top_groups.length>0){
+        var top_group = $(top_groups[0]);
+        var top_bboxcenter = top_group.prop('bboxCenter');
+        top_bboxcenter = top_bboxcenter.split(" ");
+        var top_bboxsize = top_group.prop('bboxSize');
+        top_bboxsize = top_bboxsize.split(" ");
+        
+        console.log("Top group bboxcenter is at");
+        console.log(top_bboxcenter);
+        
+        top_group.parent().prop("translation",(-top_bboxcenter[0])+" "+(-top_bboxcenter[1])+" "+(-top_bboxcenter[2]));
+        
+        //var fov = $("Viewpoint").attr("fieldOfView");
+        var fov = $("Viewpoint").prop("fieldOfView");
+        
+        console.log("field of view is "+fov);
+        
+        //(top_bboxsize[1]/2) / l = tg a/2
+        fov=fov*0.75;
+        var phi = -0.7;
+        
+        var boxsize;
+        
+        boxsize = Math.max(...top_bboxsize);
+        
+        var view_distance = (boxsize/2)/Math.tan(fov/2);    
+        
+        var view_elevation = view_distance*Math.tan(phi);
+        
+        //$("Viewpoint").attr("position","0 "+view_distance+" 0");
+        //$("Viewpoint").attr("orientation","-1 0 0 1.57080");
+        console.log(view_distance+" "+view_elevation+" "+phi);
+        
+        $("Viewpoint").attr("position","0 "+view_distance+" "+(view_elevation));
+        $("Viewpoint").attr("orientation","-1 0 0 "+(Math.PI/2-phi));
+        showdefault = true;
+        
+        var element = document.getElementById('x3d_canvas');
+        if (showdefault) element.runtime.resetView();
+        
+        var x3d_cnv_ni = $("NavigationInfo");
+        x3d_cnv_ni.prop("speed",Math.round(Math.sqrt(view_distance)/10));
+        console.log("speed is "+x3d_cnv_ni.prop("speed"));
+        
+    }
 }
 
 function showBOM(){
-        
+    console.log("showBOM");    
     //var bom = $("<ul>",{id:"bom",class:"list-group"}).css({
     var bom = $("<table>",{id:"bom"}).css({
         position:"absolute",
         top:"5px",
-        left:"705px"
+        left:"105px"
     });
-    
-    resize();
     
     if (nobuttons){
         bom.css({
@@ -320,52 +433,28 @@ function showBOM(){
     }
     
     var top = $("#topinline");
-    
-    //get top boundary box position
-    var top_groups = top.find("Group");
-    var top_group = $(top_groups[0]);
-    
-    var top_bboxcenter = top_group.prop('bboxCenter');
-    top_bboxcenter = top_bboxcenter.split(" ");
-    var top_bboxsize = top_group.prop('bboxSize');
-    top_bboxsize = top_bboxsize.split(" ");
-    
-    console.log("Top group bboxcenter is at");
-    console.log(top_bboxcenter);
-    
-    top_group.parent().prop("translation",(-top_bboxcenter[0])+" "+(-top_bboxcenter[1])+" "+(-top_bboxcenter[2]));
-    
-    var fov = $("Viewpoint").attr("fieldOfView");
-    
-    console.log("field of view is "+fov);
-    
-    //(top_bboxsize[1]/2) / l = tg a/2
-    fov=fov*0.75;
-    var phi = -0.7;
-    
-    var boxsize;
-    
-    boxsize = Math.max(...top_bboxsize);
-    
-    var view_distance = (boxsize/2)/Math.tan(fov/2);    
-    
-    var view_elevation = view_distance*Math.tan(phi);
-    
-    //$("Viewpoint").attr("position","0 "+view_distance+" 0");
-    //$("Viewpoint").attr("orientation","-1 0 0 1.57080");
-    console.log(view_distance+" "+view_elevation+" "+phi);
-    
-    $("Viewpoint").attr("position","0 "+view_distance+" "+(view_elevation));
-    $("Viewpoint").attr("orientation","-1 0 0 "+(Math.PI/2-phi));
-    showdefault = true;
-    
-    var element = document.getElementById('x3d_canvas');
-    if (showdefault) element.runtime.resetView();
+    place_camera();
     
     //upper case was important
     var parts_unique = top.find("Inline");
     //remove the first element -  because of the specific model structure?
     parts_unique.splice(0,1);
+    //console.log("Unsorted");
+    //console.log(parts_unique);  
+    parts_unique.sort(function(a,b){
+        a = $(a).prop("nameSpaceName");
+        b = $(b).prop("nameSpaceName");
+        if(a > b) {
+            return 1;
+        } else if(a < b) {
+            return -1;
+        } else {
+            return 0;
+        }
+    });
+    
+    //console.log("Sorted");
+    //console.log(parts_unique);
     
     //set default transparency?
     parts_unique.find("Material").attr("transparency",0.1);
@@ -464,15 +553,21 @@ function showBOM(){
             model_run_cmd(tmp_nsn,"click-ext");
         });
     });
-    
     $("body").append(bom);
-    resize();
 }
 
 var blockclick = false;
 
+function unbindCanvas(){
+    $("Switch").off("mousedown").off("mousemove").off("click");
+    var canvas = document.getElementById("x3d_canvas");
+    canvas.removeEventListener("touchstart",touchstarted,false);
+    canvas.removeEventListener("touchmove",touchmoved,false); 
+}
+
 function bindCanvas(){
     //whichChoice for Group tag didn't work
+    //$("Switch").on("mousedown").on("mousemove").on("click");
     
     $("Switch").each(function(){
         var hmm = $(this);
@@ -496,18 +591,8 @@ function bindCanvas(){
     });
     
     var canvas = document.getElementById("x3d_canvas");
-    canvas.addEventListener("touchstart",function(e){
-        stop_animation();
-        blockclick = false;
-        moveTimeStamp = getTimeStamp();
-    });
-    
-    canvas.addEventListener("touchmove",function(e){
-        //blockclick = true;
-        if ((getTimeStamp()-moveTimeStamp)>100){
-            blockclick = true;
-        }
-    });        
+    canvas.addEventListener("touchstart",touchstarted,false);
+    canvas.addEventListener("touchmove",touchmoved,false);
     //click
     $("Switch").click(function(event){
         if (!blockclick){
@@ -528,8 +613,25 @@ function bindCanvas(){
     });        
 }
 
+function touchstarted(){
+    stop_animation();
+    blockclick = false;
+    moveTimeStamp = getTimeStamp(); 
+}
+
+function touchmoved(){
+    //blockclick = true;
+    if ((getTimeStamp()-moveTimeStamp)>100){
+        blockclick = true;
+    }
+}
+
 function stop_animation(){
     $("timeSensor").remove();
+}
+
+function start_animation(){
+    
 }
 
 function getTimeStamp(){
@@ -585,8 +687,11 @@ function update_info(name,state,cmd){
 }
 
 function model_run_cmd(name,cmd){
-    var state = $("Switch[nsn="+name+"]").attr("state");
-    update_info(name,state,cmd);
+    var state = "";
+    if (name!="reset"){
+        state = $("Switch[nsn="+name+"]").attr("state");
+        update_info(name,state,cmd);
+    }
     switch(cmd){
         case "right-click":
             //update status to "disabled"
@@ -717,6 +822,16 @@ function model_run_cmd(name,cmd){
                 }
                 $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
             });                
+            break;
+        case "reset":
+            $("Switch").each(function(){
+                $(this).attr("whichChoice",0);
+                $(this).find("Material").attr("transparency",0.1);
+                $(this).attr("state","normal");
+                $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
+                $(".btn-subpart[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").attr("selected",true);
+            });
             break;
         default: 
             return false;
