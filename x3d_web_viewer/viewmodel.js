@@ -297,8 +297,8 @@ function model_init(){
     removeBOM();
     showBOM();
     resize();
-    //unbindCanvas();
-    //bindCanvas();
+    unbindCanvas();
+    bindCanvas();
 }
 
 var block_load_events = false;
@@ -338,19 +338,19 @@ function run2(){
                     console.log("fire init (1)");
                     model_init();
                     //unbindCanvas();
-                    bindCanvas();
+                    //bindCanvas();
                 }                              
                 if (load_counter==(load_limit-2)){
                     console.log("fire init (limit-2)");
                     model_init();
                     //unbindCanvas();
-                    bindCanvas();
+                    //bindCanvas();
                 }              
             }
         });
     }
     if (inlines.length==1) {
-        bindCanvas();
+        //bindCanvas();
         model_init();
     }
 }
