@@ -348,7 +348,7 @@ function place_camera(){
         console.log("field of view is "+fov);
         
         //(top_bboxsize[1]/2) / l = tg a/2
-        fov=fov*0.75;
+        fov=fov*0.9;
         var phi = -0.7;
         
         var boxsize;
@@ -424,20 +424,36 @@ function showBOM(){
     parts_unique.find("Material").attr("transparency",0.1);
     parts_unique.find("Material").prop("transparency",0.1);
         
+    var prev_nsn_group="";
+    var odd_group_en = false;
+    
     parts_unique.each(function(i){
         var part = $(this);
         var tmp_nsn = this.getAttribute("nameSpaceName");
-        
+        tmp_nsn_arr = tmp_nsn.split("-");
+        tmp_nsn_group = tmp_nsn_arr[0]+"-"+tmp_nsn_arr[1];
+        if (prev_nsn_group=="") prev_nsn_group = tmp_nsn_group;
+        if (prev_nsn_group!=tmp_nsn_group) odd_group_en=!odd_group_en;
         //find secondary appearances
+                      
+        if (odd_group_en){
+            odd_group = "btn-odd-success";
+        }else{
+            odd_group = "";
+        }
+            
         var sublist = top.find("[USE="+tmp_nsn+"]");
         var ele_sublist = "";
         
         var btn_subpart = false;
         
         ele_ul = $("<ul>",{class:"dropdown-menu","data-toggle":"dropdown"}).css({padding:"10px","min-width":"100px",border:"1px solid rgba(50,50,50,0.5)"});
-        btn_part = $("<button>",{class:"btn-part btn btn-default btn-sm btn-success"}).css({"min-width":"100px"}).html(tmp_nsn);
+        btn_part = $("<button>",{class:"btn-part btn btn-default btn-sm btn-success "+odd_group}).css({"min-width":"100px"}).html(tmp_nsn);
         btn_part.attr("nsn",tmp_nsn);
         btn_part.attr("state","normal");
+        
+        prev_nsn_group = tmp_nsn_group;
+        
         ele_sublist = $("<div>",{class:"btn-group"}).append(btn_part).append(
                 $("<button>",{class:"dropdown-toggle btn btn-default btn-sm nooutline",
                     "data-toggle":"dropdown",

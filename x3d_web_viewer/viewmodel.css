@@ -78,3 +78,7 @@ body{
     bottom:1px;
     left:1px;
 }
+
+.btn-odd-success{
+    background:rgba(90,150,90,1);
+}
