@@ -2,6 +2,8 @@ This project is started to convert complex mechanical CAD designs to X3D for con
 of online browsing. The x3d_step_assy.py runs in FreeCAD and processes STEP models created
 by other mechanical CAD programs.
 
+* Update: Here is the result of such conversion of 800+ parts and a few assemblies: http://wiki.elphel.com/index.php?title=Elphel_camera_assemblies
+
 This macro converts assembly CAD model to X3D. It tries to recognize
 individual parts (provided as STEP files) in the assembly model, converts
 each part to X3D and then generates assembly X3D file that includes inline
