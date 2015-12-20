@@ -40,13 +40,8 @@ var moveTimeStamp;
 
 var showdefault = 0;
 
-var load_counter = 0;
-var load_limit = 1;
-/*
-$(function(){
-   prerun();
-});
-*/
+var block_load_events = false;
+
 function prerun(){
     $(window).resize(function(){
         clearTimeout(resizeTimer);
@@ -72,15 +67,14 @@ function prerun(){
         stop_animation();
     });
     
-    var x3d_cnv_ni = $("<NavigationInfo>",{id:"navi",type:"'examine' 'any'",speed:"15",headlight:"true"});
+    var x3d_cnv_ni = $("<navigationinfo>",{id:"navi",type:"'examine' 'any'",speed:"1"});
     
-    var x3d_cnv_vp = $("<Viewpoint>").attr("fieldOfView","0.202");
+    var x3d_cnv_vp = $("<Viewpoint>").attr("fieldOfView","0.200");
     
     var x3d_cnv_in = $("<inline>",{
         id:"topinline",
         nameSpaceName:NSN,
         url: model
-        //onLoad:"document.getElementById('x3d_canvas').runtime.showAll()"
     });
         
     var x3d_cnv_trans = $("<Transform id='anima' DEF='ball'>");
@@ -102,6 +96,9 @@ function prerun(){
     scene.append(x3d_cnv_trans);
     x3d_cnv.append(scene);
             
+    //load x3dom.js
+    $.getScript("x3dom-1.7.0/x3dom.js");
+    
     var settings = $("<div>").load(settings_file,function(response,status,xhr){
         if (xhr.status==200){
             var xml = $.parseXML(response);
@@ -118,22 +115,38 @@ function prerun(){
         height: x3d_cnv.height()+"px"
     });
     
-    var element = document.getElementById('x3d_canvas');
-
-    //on load: showAll()?!
-    //required minimum?
-    
     var showall = 1;
-        
+    var element = document.getElementById('x3d_canvas');
     $(document).load(function(){
         element.runtime.enterFrame = function() {
             if (showall==1) {
                 element.runtime.examine();
                 element.runtime.showAll("negY");
                 if (showdefault) element.runtime.resetView();
-                run();
+                showall=0;
+                place_camera();
+                model_init();
+            }else{
+                //console.log("Loaded "+load_counter);
+                if (showall>=0){
+                    place_camera();
+                    model_init();
+                    showall--;
+                }
+                //the only <strong>
+                var progress_element = $.find("strong");
+                var progress_counter = $(progress_element).html();
+                progress_counter = progress_counter.split(" ");
+                //console.log("x3dom counter = "+progress_counter[1]);
+                cnt = parseInt(progress_counter[1]);
+                if (!block_load_events){
+                    if (cnt==0){
+                        place_camera();
+                        model_init();
+                        block_load_events = true;
+                    }
+                }
             }
-            if (showall>0) showall--;
         };
     });
     
@@ -303,61 +316,6 @@ function model_init(){
     bindCanvas();
 }
 
-var block_load_events = false;
-
-function run(){
-    console.log("run()");
-    var inlines = $.find("Inline");
-    console.log("Found inlines: "+inlines.length);
-    load_limit = inlines.length;
-    load_counter = 0;
-    
-    if (load_limit==1){
-        tmp_inline = $(inlines[0]);
-        tmp_inline.load(function(){
-            run2();
-        });
-    }    
-}
-
-function run2(){
-    console.log("run2()");
-    var inlines = $.find("Inline");
-    console.log("Found new inlines: "+(inlines.length-1));
-    load_limit = inlines.length;
-    
-    for(var i=0;i<inlines.length;i++){
-        tmp_inline = $(inlines[i]);
-        tmp_inline.load(function(){
-            load_counter++;
-            console.log("Loaded "+load_counter);
-            var progress_element = $.find("strong");
-            var progress_counter = $(progress_element).html();
-            progress_counter = progress_counter.split(" ");
-            console.log("x3dom counter = "+progress_counter[1]);
-            if (!block_load_events){
-                if (load_counter==1){
-                    console.log("fire init (1)");
-                    model_init();
-                    //unbindCanvas();
-                    //bindCanvas();
-                }                              
-                if (load_counter==(load_limit-2)){
-                    console.log("fire init (limit-2)");
-                    model_init();
-                    //unbindCanvas();
-                    //bindCanvas();
-                }              
-            }
-        });
-    }
-    if (inlines.length==1) {
-        //bindCanvas();
-        model_init();
-    }
-}
-
-
 function removeBOM(){
     var top = $("#topinline");
     top.find("Inline").off("click");
@@ -367,7 +325,7 @@ function removeBOM(){
 }
 
 function place_camera(){
-    
+    console.log("place camera");
     var top = $("#topinline");
     //get top boundary box position
     var top_groups = top.find("Group");
@@ -434,8 +392,9 @@ function showBOM(){
         });
     }
     
+    $("body").append(bom);
+    
     var top = $("#topinline");
-    place_camera();
     
     //upper case was important
     var parts_unique = top.find("Inline");
@@ -454,6 +413,9 @@ function showBOM(){
             return 0;
         }
     });
+    
+    var bomtr_counter=0;
+    var bomtr_subcounter=0;
     
     //console.log("Sorted");
     //console.log(parts_unique);
@@ -544,10 +506,26 @@ function showBOM(){
         
         //var ele = $("<li>",{class:"list-group-item"}).append($(ele_sublist));
         var ele = $("<td>").css({padding:"2px 5px 2px 0px"}).append($(ele_sublist));
-                
+        
+        /*
         if(i%3==0){
             bomtr = $("<tr>");
             bom.append(bomtr);
+            console.log(bom.height()+" vs "+$("#main").height());
+        }
+        */
+        if (bom.height()<=($("#main").height()-30)){
+            bomtr_counter++;
+            bomtr = $("<tr id='bomtr_"+bomtr_counter+"'>");
+            bomtr_subcounter=0;
+            bom.append(bomtr);
+        }else{
+            bomtr_subcounter++;
+            bomtr = $("#bomtr_"+bomtr_subcounter);
+            console.log("Adding to tr #"+bomtr_subcounter);
+            if (bomtr_subcounter==bomtr_counter){
+                bomtr_subcounter=0;
+            }
         }
         bomtr.append(ele);
         
@@ -555,7 +533,6 @@ function showBOM(){
             model_run_cmd(tmp_nsn,"click-ext");
         });
     });
-    $("body").append(bom);
 }
 
 var blockclick = false;
@@ -597,23 +574,34 @@ function bindCanvas(){
     canvas.addEventListener("touchmove",touchmoved,false);
     //click
     $("Switch").click(function(event){
-        if (!blockclick){
-            var hmm = $(this);
-            var id = hmm.attr("id");
-            var pn_arr = id.split(/[_:]/);
-            var pn = pn_arr[pn_arr.length-2];
-            if (event.which==1){
-                //fighting multiple click events
-                if (pn_arr[pn_arr.length-1]=="0") model_run_cmd(pn,"left-click");
+        var hmm = $(this);
+        var id = hmm.attr("id");
+        var pn_arr = id.split(/[_:]/);
+        var pn = pn_arr[pn_arr.length-2];
+        old_time = switch_click_time;
+        switch_click_time = getTimeStamp();
+        if (!blockclick){                      
+            if ((switch_click_time-old_time)<400){
+                if (event.which==1){
+                    model_run_cmd(pn,"normalize");
+                    model_run_cmd(pn,"right-click");
+                }    
+            }else{
+                if (event.which==1){
+                    //fighting multiple click events
+                    if (pn_arr[pn_arr.length-1]=="0") model_run_cmd(pn,"left-click");
+                }
+                if (event.which==3){
+                    //fighting multiple click events
+                    if (pn_arr[pn_arr.length-1]=="0") model_run_cmd(pn,"right-click");
+                }
+                console.log("The pointer is over "+hmm.attr("id")+", whichChoice="+hmm.attr("whichChoice")+" render="+hmm.attr("render")+" DEF="+hmm.attr("DEF"));
             }
-            if (event.which==3){
-                //fighting multiple click events
-                if (pn_arr[pn_arr.length-1]=="0") model_run_cmd(pn,"right-click");
-            }
-            console.log("The pointer is over "+hmm.attr("id")+", whichChoice="+hmm.attr("whichChoice")+" render="+hmm.attr("render")+" DEF="+hmm.attr("DEF"));
-        }
-    });        
+        }    
+    });
 }
+
+var switch_click_time = 0;
 
 function touchstarted(){
     stop_animation();
@@ -665,7 +653,7 @@ function update_info(name,state,cmd){
     $("#info").empty();
     switch(cmd){
         case "left-click":
-            if (state=="normal"){
+            if ((state=="normal")){
                 var pn = $("<span>").html(name);
                 var open_btn = $("<a>",{
                     id:"info_open",
@@ -693,6 +681,9 @@ function update_info(name,state,cmd){
                 
                 $("#info").append(pn).append($("<span>").append(open_btn)).append($("<span>").append(hide_btn));
             }
+            break;
+        case "click-ext":
+            update_info(name,"normal","left-click");
             break;
         default: return false;
     }
