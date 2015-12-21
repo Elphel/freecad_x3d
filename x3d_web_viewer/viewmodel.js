@@ -204,7 +204,7 @@ function prerun(){
 </tr>\
 <tr>\
     <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dbl-left-click:</b></td>\
-    <td valign='top'>set center of rotation but <span style='color:rgba(255,100,100,1)'><b>interferes with left-click</b></span></td>\
+    <td valign='top'>hide part and its copies, <span style='color:rgba(255,100,100,1)'><b>interferes with center of rotation</b></span></td>\
 </tr>\
 <tr>\
     <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dbl-middle-click:</b></td>\
@@ -449,6 +449,7 @@ function showBOM(){
         
         ele_ul = $("<ul>",{class:"dropdown-menu","data-toggle":"dropdown"}).css({padding:"10px","min-width":"100px",border:"1px solid rgba(50,50,50,0.5)"});
         btn_part = $("<button>",{class:"btn-part btn btn-default btn-sm btn-success "+odd_group}).css({"min-width":"100px"}).html(tmp_nsn);
+        btn_part.attr("odd",odd_group_en);
         btn_part.attr("nsn",tmp_nsn);
         btn_part.attr("state","normal");
         
@@ -599,8 +600,8 @@ function bindCanvas(){
         if (!blockclick){                      
             if ((switch_click_time-old_time)<400){
                 if (event.which==1){
-                    model_run_cmd(pn,"normalize");
-                    model_run_cmd(pn,"right-click");
+                    if (pn_arr[pn_arr.length-1]=="0") model_run_cmd(pn,"normalize");
+                    if (pn_arr[pn_arr.length-1]=="0") model_run_cmd(pn,"right-click");
                 }    
             }else{
                 if (event.which==1){
@@ -627,7 +628,7 @@ function touchstarted(){
 
 function touchmoved(){
     //blockclick = true;
-    if ((getTimeStamp()-moveTimeStamp)>100){
+    if ((getTimeStamp()-moveTimeStamp)>200){
         blockclick = true;
     }
 }
@@ -701,6 +702,9 @@ function update_info(name,state,cmd){
         case "click-ext":
             update_info(name,"normal","left-click");
             break;
+        case "normalize0.9":
+            update_info(name,"normal","left-click");
+            break;            
         default: return false;
     }
 }
@@ -720,29 +724,30 @@ function model_run_cmd(name,cmd){
             //ext buttons - white
             $(".btn-part[nsn="+name+"]").removeClass("btn-success")
                                         .removeClass("btn-primary").css({opacity:"1.0"});
+            if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
+                $(".btn-part[nsn="+name+"]").removeClass("btn-odd-success");
+            }
             //int buttons - white
             $(".btn-subpart[nsn="+name+"]").removeClass("btn-success");
+            
             //other buttons - untouched
             break;
         case "left-click":
+            console.log("left-click!");
             if (state=="normal"){
                 //other buttons - deselect! 
                 
                 //other states to normal
                 //make others who are visible - almost transparent
-                $("Switch").each(function(){
-                    $(this).find("Material").attr("transparency",0.9);
-                    if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")) {
-                        $(this).attr("state","normal");
-                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
-                    }
-                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
-                });
+                model_run_cmd(name,"normalize0.9");
                 //update status to "selected"
                 $("Switch[nsn="+name+"]").attr("state","selected");
                 $("Switch[nsn="+name+"]").find("Material").attr("transparency",0.0);
                 //ext button - blue
                 $(".btn-part[nsn="+name+"]").addClass("btn-primary").removeClass("btn-success").css({opacity:"1.0"});
+                if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
+                    $(".btn-part[nsn="+name+"]").removeClass("btn-odd-success");
+                }
                 //int buttons - green
                 $(".btn-subpart[nsn="+name+"]").addClass("btn-success");
             }
@@ -758,6 +763,9 @@ function model_run_cmd(name,cmd){
                 $("Switch[nsn="+name+"]").attr("whichChoice",0);
                 //ext button - green
                 $(".btn-part[nsn="+name+"]").addClass("btn-success");
+                if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
+                    $(".btn-part[nsn="+name+"]").addClass("btn-odd-success");
+                }
                 //int buttons - green
                 $(".btn-subpart[nsn="+name+"]").addClass("btn-success");
                 //other buttons - untouched   
@@ -792,6 +800,9 @@ function model_run_cmd(name,cmd){
                     if ($(this).attr("state")=="selected") {
                         $(this).attr("state","normal");
                         $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                        if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
+                            $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
+                        }
                     }
                     if ($(this).attr("state")!="disabled") $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"0.5"});
                 });
@@ -800,6 +811,9 @@ function model_run_cmd(name,cmd){
                 $("Switch[nsn="+name+"]").find("Material").attr("transparency",0.0);
                 
                 $(".btn-part[nsn="+name+"]").removeClass("btn-success").addClass("btn-primary").css({opacity:"1.0"});
+                if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
+                    $(".btn-part[nsn="+name+"]").removeClass("btn-odd-success");
+                }
                     //selected?
                         // superselected
                         // update status to superselected
@@ -822,6 +836,9 @@ function model_run_cmd(name,cmd){
                     if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")) {
                         $(this).attr("state","normal");
                         $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                        if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
+                            $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
+                        }
                     }
                     $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
                 });
@@ -838,9 +855,25 @@ function model_run_cmd(name,cmd){
                 if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
                     $(this).attr("state","normal");
                     $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                    if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
+                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
+                    }
                 }
                 $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
             });                
+            break;
+        case "normalize0.9":
+            $("Switch").each(function(){
+                $(this).find("Material").attr("transparency",0.9);
+                if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
+                    $(this).attr("state","normal");
+                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                    if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
+                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
+                    }
+                }
+                $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
+            }); 
             break;
         case "reset":
             $("Switch").each(function(){
@@ -848,6 +881,9 @@ function model_run_cmd(name,cmd){
                 $(this).find("Material").attr("transparency",0.1);
                 $(this).attr("state","normal");
                 $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
+                if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
+                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
+                }
                 $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({opacity:"1.0"});
                 $(".btn-subpart[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").attr("selected",true);
             });
