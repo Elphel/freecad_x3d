@@ -11,6 +11,7 @@ var model = "Undefined";
 var NSN = "m";
 var elphel_wiki_prefix = "http://wiki.elphel.com/index.php?search="
 var nobuttons = false;
+var nocontrols = false;
 var animate = false;
 var settings_file = "settings.xml";
 var path = "";
@@ -97,7 +98,8 @@ function prerun(){
     x3d_cnv.append(scene);
             
     //load x3dom.js
-    $.getScript("x3dom-1.7.0/x3dom.js");
+    //$.getScript("x3dom-1.7.0/x3dom.js");
+    $.getScript("http://x3dom.org/download/1.7.1/x3dom.js");
     
     var settings = $("<div>").load(settings_file,function(response,status,xhr){
         if (xhr.status==200){
@@ -265,7 +267,8 @@ function prerun(){
         color:"white",
         "font-size":"1.2em",
         padding:"10px 10px 10px 10px",
-        background:"rgba(50,50,50,0.9)"
+        background:"rgba(50,50,50,0.9)",
+        display:"none"
     });
     
     $("#main").append(info);
@@ -305,7 +308,14 @@ function prerun(){
     $("#v6").css({cursor:"pointer"}).click(function(){element.runtime.showAll("negZ");});
     
     $("#v7").css({cursor:"pointer"}).click(function(){element.runtime.resetView();});
-       
+    
+    if (nocontrols) {
+        rst_model.css({display:"none"});
+        hlp.css({display:"none"});
+        $("#thrd").css({display:"none"});
+    }
+    
+    
 }
 
 function model_init(){
@@ -437,7 +447,8 @@ function showBOM(){
         //find secondary appearances
                       
         if (odd_group_en){
-            odd_group = "btn-odd-success";
+            //odd_group = "btn-odd-success";
+            odd_group = "";
         }else{
             odd_group = "";
         }
@@ -449,6 +460,9 @@ function showBOM(){
         
         ele_ul = $("<ul>",{class:"dropdown-menu","data-toggle":"dropdown"}).css({padding:"10px","min-width":"100px",border:"1px solid rgba(50,50,50,0.5)"});
         btn_part = $("<button>",{class:"btn-part btn btn-default btn-sm btn-success "+odd_group}).css({"min-width":"100px"}).html(tmp_nsn);
+        
+        btn_part.css({background:getColorByNSN(tmp_nsn)});
+        
         btn_part.attr("odd",odd_group_en);
         btn_part.attr("nsn",tmp_nsn);
         btn_part.attr("state","normal");
@@ -667,7 +681,7 @@ function unblockclique(){
 }
 
 function update_info(name,state,cmd){
-    $("#info").empty();
+    $("#info").empty().css({display:"none"});
     switch(cmd){
         case "left-click":
             if ((state=="normal")){
@@ -696,7 +710,7 @@ function update_info(name,state,cmd){
                     model_run_cmd(name,"info-hide-click");
                 });
                 
-                $("#info").append(pn).append($("<span>").append(open_btn)).append($("<span>").append(hide_btn));
+                $("#info").append(pn).append($("<span>").append(open_btn)).append($("<span>").append(hide_btn)).css({display:""});
             }
             break;
         case "click-ext":
@@ -722,6 +736,7 @@ function model_run_cmd(name,cmd){
             //whichChoice -1
             $("Switch[nsn="+name+"]").attr("whichChoice",-1);
             //ext buttons - white
+            $(".btn-part[nsn="+name+"]").css({background:"","font-weight":"normal"});
             $(".btn-part[nsn="+name+"]").removeClass("btn-success")
                                         .removeClass("btn-primary").css({opacity:"1.0"});
             if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
@@ -733,7 +748,6 @@ function model_run_cmd(name,cmd){
             //other buttons - untouched
             break;
         case "left-click":
-            console.log("left-click!");
             if (state=="normal"){
                 //other buttons - deselect! 
                 
@@ -744,7 +758,8 @@ function model_run_cmd(name,cmd){
                 $("Switch[nsn="+name+"]").attr("state","selected");
                 $("Switch[nsn="+name+"]").find("Material").attr("transparency",0.0);
                 //ext button - blue
-                $(".btn-part[nsn="+name+"]").addClass("btn-primary").removeClass("btn-success").css({opacity:"1.0"});
+                $(".btn-part[nsn="+name+"]").css({background:"","font-weight":"bold"});
+                $(".btn-part[nsn="+name+"]").addClass("btn-primary").removeClass("btn-success").css({opacity:"1.0"});                
                 if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
                     $(".btn-part[nsn="+name+"]").removeClass("btn-odd-success");
                 }
@@ -762,6 +777,8 @@ function model_run_cmd(name,cmd){
                 //whichChoice 0
                 $("Switch[nsn="+name+"]").attr("whichChoice",0);
                 //ext button - green
+                
+                $(".btn-part[nsn="+name+"]").css({background:getColorByNSN(name),"font-weight":"normal"});
                 $(".btn-part[nsn="+name+"]").addClass("btn-success");
                 if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
                     $(".btn-part[nsn="+name+"]").addClass("btn-odd-success");
@@ -799,6 +816,7 @@ function model_run_cmd(name,cmd){
                     $(this).find("Material").attr("transparency",1.0);                    
                     if ($(this).attr("state")=="selected") {
                         $(this).attr("state","normal");
+                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({background:getColorByNSN($(this).attr("nsn")),"font-weight":"normal"});
                         $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
                         if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
                             $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
@@ -810,6 +828,7 @@ function model_run_cmd(name,cmd){
                 $("Switch[nsn="+name+"]").attr("state","superselected");
                 $("Switch[nsn="+name+"]").find("Material").attr("transparency",0.0);
                 
+                $(".btn-part[nsn="+name+"]").css({background:"","font-weight":"bold"});
                 $(".btn-part[nsn="+name+"]").removeClass("btn-success").addClass("btn-primary").css({opacity:"1.0"});
                 if ($(".btn-part[nsn="+name+"]").attr("odd")=="true"){
                     $(".btn-part[nsn="+name+"]").removeClass("btn-odd-success");
@@ -835,6 +854,7 @@ function model_run_cmd(name,cmd){
                     $(this).find("Material").attr("transparency",0.1);
                     if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")) {
                         $(this).attr("state","normal");
+                        $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({background:getColorByNSN($(this).attr("nsn")),"font-weight":"normal"});
                         $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
                         if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
                             $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
@@ -854,6 +874,7 @@ function model_run_cmd(name,cmd){
                 $(this).find("Material").attr("transparency",0.1);
                 if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
                     $(this).attr("state","normal");
+                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({background:getColorByNSN($(this).attr("nsn")),"font-weight":"normal"});
                     $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
                     if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
                         $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
@@ -867,6 +888,7 @@ function model_run_cmd(name,cmd){
                 $(this).find("Material").attr("transparency",0.9);
                 if (($(this).attr("state")=="selected")||($(this).attr("state")=="superselected")){
                     $(this).attr("state","normal");
+                    $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({background:getColorByNSN($(this).attr("nsn")),"font-weight":"normal"});
                     $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
                     if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
                         $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
@@ -880,6 +902,7 @@ function model_run_cmd(name,cmd){
                 $(this).attr("whichChoice",0);
                 $(this).find("Material").attr("transparency",0.1);
                 $(this).attr("state","normal");
+                $(".btn-part[nsn="+$(this).attr("nsn")+"]").css({background:getColorByNSN($(this).attr("nsn")),"font-weight":"normal"});
                 $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-success").removeClass("btn-primary");
                 if ($(".btn-part[nsn="+$(this).attr("nsn")+"]").attr("odd")=="true"){
                     $(".btn-part[nsn="+$(this).attr("nsn")+"]").addClass("btn-odd-success");
@@ -950,6 +973,7 @@ function parseURL() {
         case "model": model = parameters[i][1];break;
         case "nobuttons": nobuttons = true;break;
         case "animate": animate = true;break;
+        case "nocontrols": nocontrols = true;break;
         //case "settings": settings_file = parameters[i][1];break;
         }
     }
@@ -962,4 +986,21 @@ function parseURL() {
     }
     settings_file = model.slice(0,-3)+"xml";
     console.log("Opening model: "+model);
+}
+
+function getColorByNSN(nsn){
+    var nsn_arr = nsn.split("-");
+    var tmp_result = 0;
+    if (nsn_arr[0]=="393"){
+        tmp_result = 512;
+    }else{
+        tmp_result = 512;
+    }
+    tmp_result += nsn_arr[1]*2;
+    
+    var g = 100 + ((tmp_result>>6)&0x7)*20;
+    var b = 100 + ((tmp_result>>3)&0x7)*5;
+    var r = 100 + ((tmp_result>>0)&0x7)*20;
+    
+    return "rgba("+r+","+g+","+b+",1)";
 }
