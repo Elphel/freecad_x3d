@@ -69,7 +69,7 @@ function prerun(){
         //stop_animation();
     });
     
-    var x3d_cnv_ni = $("<navigationinfo>",{id:"navi",type:"'examine' 'any'",speed:"1"});
+    var x3d_cnv_ni = $("<navigationinfo>",{id:"navi",type:"'examine' 'any'",speed:"1",headlight:"true"});
     
     var x3d_cnv_vp = $("<Viewpoint>").attr("fieldOfView","0.200");
     
@@ -446,7 +446,13 @@ function showBOM(){
     //set default transparency?
     parts_unique.find("Material").attr("transparency",0.1);
     parts_unique.find("Material").prop("transparency",0.1);
-        
+    
+    parts_unique.find("Material").attr("shininess",0.5);
+    parts_unique.find("Material").prop("shininess",0.5);
+    
+    parts_unique.find("Material").attr("specularColor","0.2 0.2 0.2");
+    parts_unique.find("Material").prop("specularColor","0.2 0.2 0.2");
+    
     var prev_nsn_group="";
     var odd_group_en = false;
     
