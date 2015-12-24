@@ -297,7 +297,10 @@ function prerun(){
         //element.runtime.showAll("negY");
         //if (showdefault) element.runtime.resetView();
         //element.runtime.resetView();
-        if (animate) start_animation();
+        if (animate) {
+            stop_animation();
+            start_animation();
+        }
     });
     
     $("#main").append(rst_model);
