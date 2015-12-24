@@ -108,7 +108,8 @@ function prerun(){
     
     //load x3dom.js
     //$.getScript("x3dom-1.7.0/x3dom.js");
-    $.getScript("http://x3dom.org/download/1.7.1/x3dom.js");
+    //$.getScript("http://x3dom.org/download/1.7.1/x3dom.js");
+    $.getScript("http://x3dom.org/download/1.7/x3dom.js");
     
     var settings = $("<div>").load(settings_file,function(response,status,xhr){
         if (xhr.status==200){
@@ -666,8 +667,8 @@ function touchmoved(){
     //blockclick = true;
     if ((getTimeStamp()-moveTimeStamp)>100){
         blockclick = true;
-        dragging = true;
     }
+    dragging = true;
     move_history.push(getMoveState(event));
     console.log("touchmoved()");
 }
