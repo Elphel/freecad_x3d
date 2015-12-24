@@ -37,7 +37,7 @@ function resize(){
 var resizeTimer;
 
 var moveTimeSet = 0;
-var moveTimeStamp;
+var moveTimeStamp = 0;
 
 var showdefault = 0;
 
@@ -65,7 +65,8 @@ function prerun(){
     $("#main").prepend(x3d_cnv);
     
     x3d_cnv.click(function(){
-        stop_animation();
+        console.log("Temporary disable stop_animation() call");
+        //stop_animation();
     });
     
     var x3d_cnv_ni = $("<navigationinfo>",{id:"navi",type:"'examine' 'any'",speed:"1"});
@@ -97,6 +98,14 @@ function prerun(){
     scene.append(x3d_cnv_trans);
     x3d_cnv.append(scene);
             
+    if (animate){
+        console.log($("#anima").find("timeSensor"));
+        //$("#anima").find("timeSensor").attr("loop","true");
+        //$("#anima").find("timeSensor").attr("enabled","true");
+        //$("timeSensor").prop("loop","true");
+        //$("timeSensor").prop("isActive","true");
+    }
+    
     //load x3dom.js
     //$.getScript("x3dom-1.7.0/x3dom.js");
     $.getScript("http://x3dom.org/download/1.7.1/x3dom.js");
@@ -573,6 +582,10 @@ function unbindCanvas(){
     var canvas = document.getElementById("x3d_canvas");
     canvas.removeEventListener("touchstart",touchstarted,false);
     canvas.removeEventListener("touchmove",touchmoved,false); 
+    canvas.removeEventListener("mousedown", mousestarted,false);
+    canvas.removeEventListener("mousemove", mousemoved,true);  //does not work with false
+    canvas.removeEventListener("mouseup",   mouseended,true); 
+    canvas.removeEventListener("touchend",  mouseended,false);
 }
 
 function bindCanvas(){
@@ -602,7 +615,13 @@ function bindCanvas(){
     
     var canvas = document.getElementById("x3d_canvas");
     canvas.addEventListener("touchstart",touchstarted,false);
-    canvas.addEventListener("touchmove",touchmoved,false);
+    canvas.addEventListener("touchmove", touchmoved,false);
+    canvas.addEventListener("mousedown", mousestarted,false);
+    canvas.addEventListener("mousemove", mousemoved,true);  //does not work with false
+    canvas.addEventListener("mouseup",   mouseended,true); 
+    canvas.addEventListener("touchend",  mouseended,false);
+    console.log("Added event listeners");
+    
     //click
     $("Switch").click(function(event){
         var hmm = $(this);
@@ -637,13 +656,244 @@ var switch_click_time = 0;
 function touchstarted(){
     stop_animation();
     blockclick = false;
-    moveTimeStamp = getTimeStamp(); 
+    dragging = false;
+    moveTimeStamp = getTimeStamp();
+    console.log("touchstarted()");
+    move_history=[];
 }
 
 function touchmoved(){
     //blockclick = true;
-    if ((getTimeStamp()-moveTimeStamp)>200){
+    if ((getTimeStamp()-moveTimeStamp)>100){
         blockclick = true;
+        dragging = true;
+    }
+    move_history.push(getMoveState(event));
+    console.log("touchmoved()");
+}
+
+
+var inertial_rot_axis_speed; //  = inertial_rot_axis_speed=[new x3dom.fields.SFVec3f(0,0,1), 0]
+var min_move=20; // pixels
+var lastRotatedTime;
+var minRotationSpeed=0.0001; //rad/msec
+var rotationTime = 2000.0; //msec
+
+var moveReleaseTimeLimit = 300;//msec
+
+function getMoveState(event){
+    rt=document.getElementById('x3d_canvas').runtime;
+    return {
+        mousepos:  rt.mousePosition(event),
+        timestamp: getTimeStamp(),
+        matrix:    rt.viewMatrix()
+    };
+}
+
+var dragging = false;
+var move_history;
+
+function mousestarted(event){
+    stop_animation();
+    dragging = true;
+    move_history=[];
+    move_history.push(getMoveState(event));
+}
+
+function mousemoved(){
+    if (dragging) {
+        move_history.push(getMoveState(event));
+    }
+}
+
+function mouseended(){
+        dragging = false;
+        var last_state=getMoveState(event);
+        console.log("mouse ended, history length="+move_history.length);
+        // find history snapshot farher than minimal or local best or first
+        var last_dist=0;
+        var use_index=move_history.length-1;
+        
+        for (var i =move_history.length-1;i>=0;i--){
+                dist=Math.sqrt(Math.pow(last_state.mousepos[0]-move_history[i].mousepos[0],2) + Math.pow(last_state.mousepos[1]-move_history[i].mousepos[1],2))
+                if (dist > min_move) {
+                        use_index = i;
+                } else if (dist < last_dist){
+                        use_index = i + 1;
+                } else if (i==0) {
+                        use_index = 0;
+                } else if ((getTimeStamp()-move_history[i].timestamp)>moveReleaseTimeLimit) {        
+                } else {
+                        last_dist = dist;
+                        continue;
+                }
+                break;
+        }
+    
+        //deltat
+        dt = last_state.timestamp - move_history[use_index].timestamp;
+        console.log("Using samle #"+i +" behind="+(move_history.length-i)+" dist="+dist+" dt="+(dt/1000)+"s");
+        
+        if (dt == 0) {
+                inertial_rot_axis_speed=[new x3dom.fields.SFVec3f(0,0,1),0];
+        }else{
+            
+            delta_matrix = last_state.matrix.mult(move_history[use_index].matrix.inverse());
+            
+            var translation = new x3dom.fields.SFVec3f(0,0,0);
+            var scaleFactor = new x3dom.fields.SFVec3f(1,1,1);
+            var rotation = new x3dom.fields.Quaternion(0,0,1,0);
+            var scaleOrientation = new x3dom.fields.Quaternion(0,0,1,0);
+            delta_matrix.getTransform(translation, rotation, scaleFactor, scaleOrientation);
+            
+            view_rot_axis_speed=rotation.toAxisAngle();
+            view_rot_axis_speed[1] /= dt;
+            
+            // Orient first arrow according to rotation  (Z-component will be small)
+            //var x_axis = new x3dom.fields.SFVec3f(1,0,0);
+            //var x_arrow_q=x3dom.fields.Quaternion.rotateFromTo(new x3dom.fields.SFVec3f(1,0,0), view_rot_axis_speed[0]);
+            //var x_arrow_aa=x_arrow_q.toAxisAngle();
+            //document.getElementById("trans_X-ARROW").setAttribute("rotation",x_arrow_aa[0].toString()+" "+x_arrow_aa[1]);
+            // Orient second arrow according to rotation  (Z-component will be small)
+            
+            var world_rot_axis=last_state.matrix.inverse().multMatrixVec(view_rot_axis_speed[0]);
+            
+            //var x1_arrow_aa=x3dom.fields.Quaternion.rotateFromTo(new x3dom.fields.SFVec3f(1,0,0), world_rot_axis).toAxisAngle();
+            //document.getElementById("trans_X-ARROW").setAttribute("rotation",x1_arrow_aa[0].toString()+" "+x1_arrow_aa[1]);
+            
+            lastRotatedTime = getTimeStamp();
+            inertial_rot_axis_speed = [world_rot_axis, view_rot_axis_speed[1]];
+        }
+        console.log("rotation axis:"+inertial_rot_axis_speed[0].toString()+", angular_velocity="+(1000*inertial_rot_axis_speed[1])+" rad/s");
+        
+        inertial_rotate();
+}
+
+var animation_array;
+var fraction = 100;
+var halflife = 2000;
+
+function inertial_rotate(){
+    if (!dragging && inertial_rot_axis_speed && (inertial_rot_axis_speed[1]>=minRotationSpeed)) {
+        
+        rotationTime = halflife;
+        tq = fraction;
+        
+        animation_array = [];
+        dt = 0;//ms
+        animation_en = true;
+        animation_duration = 0;//==5000ms
+        
+        var am = document.getElementById('x3d_canvas').runtime.getCurrentTransform(document.getElementById("anima"));
+        
+        var ts0 = getTimeStamp();
+        //console.log(ts0);
+        
+        while(animation_en){
+            inertial_rot_axis_speed[1] *= Math.exp(-tq/rotationTime);
+            //console.log("Rotation Speed "+inertial_rot_axis_speed[1]+" dt="+dt);
+            q=x3dom.fields.Quaternion.axisAngle(inertial_rot_axis_speed[0],inertial_rot_axis_speed[1]*tq);
+            rm = new x3dom.fields.SFMatrix4f();
+            rm.setRotate(q);
+            
+            var translation = new x3dom.fields.SFVec3f(0,0,0);
+            var scaleFactor = new x3dom.fields.SFVec3f(1,1,1);
+            var rotation = new x3dom.fields.Quaternion(0,0,1,0);
+            var scaleOrientation = new x3dom.fields.Quaternion(0,0,1,0);
+            am.getTransform(translation, rotation, scaleFactor, scaleOrientation);
+            aa= rotation.toAxisAngle();
+            
+            var tmp_key = dt;
+            var tmp_keyvalue = aa[0].toString()+" "+aa[1];
+            
+            am = rm.mult(am);
+            
+            animation_array.push([tmp_key,tmp_keyvalue]);
+            
+            //if (dt==animation_duration) animation_en = false;
+            if (inertial_rot_axis_speed[1]<=minRotationSpeed) {
+                animation_en = false;
+                animation_duration = dt;
+                /*
+                for(var i=0;i<animation_array.length;i++){
+                    animation_array[i][0] /= animation_duration;
+                }
+                */
+                //console.log("Animation duration will be "+(animation_duration/1000));
+                //console.log(animation_array);
+            }
+            dt += tq;
+            //animation_duration += tq;
+        }
+        
+        var ts1 = getTimeStamp();
+        
+        //find index
+        var keyStr = "";
+        var keyValueStr = "";
+        var calc_index = Math.ceil((ts1-ts0)/tq);
+        
+        animation_duration = animation_duration - calc_index*tq;
+        
+        for(var i=calc_index;i<animation_array.length;i++){
+            keyStr += " "+(animation_array[i][0]/animation_duration);
+            keyValueStr += " "+animation_array[i][1];
+        }
+        
+        var x3d_cnv_anim = $("\
+        <timeSensor DEF='time' cycleInterval='"+((animation_duration/1000))+"' loop='false' enabled='true' startTime='"+(getTimeStamp()/1000)+"'></timeSensor>\
+        <orientationInterpolator DEF='move' key='"+keyStr+"' keyValue='"+keyValueStr+"'></orientationInterpolator>\
+        <Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\
+        <Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\
+        ");
+            
+        $("#anima").append(x3d_cnv_anim);
+        $("timeSensor").attr("enabled",true);
+        /*
+        setInterval(function(){
+           console.log($("timeSensor").attr("startTime"));
+           console.log($("timeSensor").attr("time"));
+        },50);
+        */
+        
+        //$("#anima").prepend(ats);
+        
+        //newTime=getTimeStamp();
+        //dt = newTime - lastRotatedTime;
+        //lastRotatedTime = newTime;
+        
+        //inertial_rot_axis_speed[1] *= Math.exp(-dt/rotationTime);
+        //console.log("inertial_rotate, velocity= "+inertial_rot_axis_speed[1]);
+        
+        //var ts=getTimeStamp();
+        //var dt= (ts - last_timestamp);
+        //last_timestamp = ts;
+
+        //console.log("inertial_rotate, velocity= "+inertial_rot_axis_speed[1]);
+        //q=x3dom.fields.Quaternion.axisAngle(inertial_rot_axis_speed[0],  inertial_rot_axis_speed[1]*dt);
+        //console.log("inertial_rotate, q= "+q.toString());
+        //rm = new x3dom.fields.SFMatrix4f();
+        //rm.setRotate(q);
+        //console.log("rm= "+rm.toString());
+
+        //am = document.getElementById('x3d_canvas').runtime.getCurrentTransform(document.getElementById("anima"))
+
+        //am = am.mult(rm);
+        //am = rm.mult(am);
+
+        //var translation = new x3dom.fields.SFVec3f(0,0,0);
+        //var scaleFactor = new x3dom.fields.SFVec3f(1,1,1);
+        //var rotation = new x3dom.fields.Quaternion(0,0,1,0);
+        //var scaleOrientation = new x3dom.fields.Quaternion(0,0,1,0);
+        //am.getTransform(translation, rotation, scaleFactor, scaleOrientation);
+        //aa= rotation.toAxisAngle();
+        
+        //document.getElementById("anima").setAttribute("rotation",aa[0].toString()+" "+aa[1])
+               
+        //document.getElementById('x3d_canvas').runtime.viewpoint()._viewMatrix = vm; //.mult(rm); 
+        //document.getElementById("viewpoint").setAttribute("rotation",aa[0].toString()+" "+aa[1])
+        
+        //aa[0].toString()
     }
 }
 
@@ -974,6 +1224,9 @@ function parseURL() {
         case "nobuttons": nobuttons = true;break;
         case "animate": animate = true;break;
         case "nocontrols": nocontrols = true;break;
+        case "fraction": fraction = parseInt(parameters[i][1]);break;
+        case "halflife": halflife = parseInt(parameters[i][1]);break;
+        case "releasetimelimit": moveReleaseTimeLimit = parseInt(parameters[i][1]);break;
         //case "settings": settings_file = parameters[i][1];break;
         }
     }
