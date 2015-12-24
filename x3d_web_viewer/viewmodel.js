@@ -513,7 +513,7 @@ function showBOM(){
             window.location.href = $(this).attr('href');
         });
         
-        btn_link_to_wiki = $("<a>",{href:elphel_wiki_prefix+tmp_nsn,class:"btn btn-default btn-sm",title:"Elphel Wiki docs"}).html("<span class=\"glyphicon glyphicon-book\" aria-hidden=\"true\"></span>").css({padding:"7px 13px 7px 13px",margin:"6px"});
+        btn_link_to_wiki = $("<a>",{href:elphel_wiki_prefix+"\""+tmp_nsn+"\"&fulltext=Search",class:"btn btn-default btn-sm",title:"Elphel Wiki docs"}).html("<span class=\"glyphicon glyphicon-book\" aria-hidden=\"true\"></span>").css({padding:"7px 13px 7px 13px",margin:"6px"});
         
         btn_link_to_wiki.click(function(e){
             window.location.href = $(this).attr('href');
@@ -951,6 +951,17 @@ function update_info(name,state,cmd){
                 
                 open_btn.attr("href","?"+inherited_parameters+"model="+path+"/"+name+".x3d");
                 
+                var wiki_btn = $("<a>",{
+                    id:"info_wiki",
+                    title:"look for part in Elphel wiki",
+                    class:"btn btn-default btn-sm nooutline"    
+                }).attr("nsn",name).html("<span class=\"glyphicon glyphicon-book\" aria-hidden=\"true\"></span>").css({
+                    padding: "8px 11px 7px 11px",
+                    margin: "0px 0px 0px 10px"
+                });
+                
+                wiki_btn.attr("href",elphel_wiki_prefix+"\""+name+"\"&fulltext=Search");
+                
                 var hide_btn = $("<button>",{
                     id:"info_hide",
                     title:"hide parts",
@@ -964,7 +975,7 @@ function update_info(name,state,cmd){
                     model_run_cmd(name,"info-hide-click");
                 });
                 
-                $("#info").append(pn).append($("<span>").append(open_btn)).append($("<span>").append(hide_btn)).css({display:""});
+                $("#info").append(pn).append($("<span>").append(open_btn)).append($("<span>").append(wiki_btn)).append($("<span>").append(hide_btn)).css({display:""});
             }
             break;
         case "click-ext":
