@@ -12,26 +12,34 @@ var NSN = "m";
 var elphel_wiki_prefix = "http://wiki.elphel.com/index.php?search="
 var nobuttons = false;
 var nocontrols = false;
+var notitle = false;
+var nodocs = false;
 var animate = false;
 var settings_file = "settings.xml";
 var path = "";
 var inherited_parameters = "";
+
+var screen_ratio = 1;//w/h
+var zoom = 0.9;
 
 function resize(){
     console.log("resize");
     var w = $(window).width();
     var h = $(window).height();
     if (w>h){
-        $("#main").css({width:(h-10)+"px",height:(h-10)+"px"});
-        $("#x3d_canvas").css({width:(h-10)+"px",height:(h-10)+"px"});
-        $("#bom").css({left:(h)+"px"});
+        $("#main").css({width:(Math.round(h*screen_ratio)-10)+"px",height:(h-10)+"px"});
+        $("#x3d_canvas").css({width:(Math.round(h*screen_ratio)-10)+"px",height:(h-10)+"px"});
+        $("#bom").css({left:(Math.round(h*screen_ratio))+"px"});
         //$("#thrd").css({left:(h-107)+"px"});
     }else{
-        $("#main").css({width:(w-10)+"px",height:(w-10)+"px"});
-        $("#x3d_canvas").css({width:(w-10)+"px",height:(w-10)+"px"});
+        $("#main").css({width:(w-10)+"px",height:(Math.round(w/screen_ratio)-10)+"px"});
+        $("#x3d_canvas").css({width:(w-10)+"px",height:(Math.round(w/screen_ratio)-10)+"px"});
         $("#bom").css({left:(w)+"px"});
         //$("#thrd").css({left:(w-107)+"px"});
     }
+    $("#title").css({
+        left: ($("#main").width()/2-$("#title").width()/2)+"px",
+    });
 }
 
 var resizeTimer;
@@ -328,6 +336,36 @@ function prerun(){
         $("#thrd").css({display:"none"});
     }
     
+    var index = model.lastIndexOf("/");
+    /*
+    if (index<0){
+        index = 0;
+    }
+    */
+    var model_pn = model.substr(index+1);
+    model_pn = model_pn.slice(0,-4);
+    
+    
+    var pn_title = $("<div>",{id:"title"}).css({
+        position:"absolute",
+        "border-radius":"2px 2px 2px 2px",
+        border: "1px solid gray",
+        color:"white",
+        "font-size":"1.2em",
+        padding:"10px 10px 10px 10px",
+        background:"rgba(50,50,50,0.9)"
+    }).html(model_pn);
+    
+    $("#main").append(pn_title);
+    
+    pn_title.css({
+        top: "0px",
+        left: ($("#main").width()/2-pn_title.width()/2)+"px",
+    });
+    
+    if (notitle){
+        pn_title.css({display:"none"});
+    }
     
 }
 
@@ -371,7 +409,7 @@ function place_camera(){
         console.log("field of view is "+fov);
         
         //(top_bboxsize[1]/2) / l = tg a/2
-        fov=fov*0.9;
+        fov=fov*zoom;
         var phi = -0.7;
         
         var boxsize;
@@ -595,7 +633,9 @@ function unbindCanvas(){
     canvas.removeEventListener("mousedown", mousestarted,false);
     canvas.removeEventListener("mousemove", mousemoved,true);  //does not work with false
     canvas.removeEventListener("mouseup",   mouseended,true); 
+    canvas.removeEventListener("mouseleave",mouseleft,false);
     canvas.removeEventListener("touchend",  mouseended,false);
+    canvas.removeEventListener("touchcancel",  touchcanceled,false);
 }
 
 function bindCanvas(){
@@ -628,8 +668,10 @@ function bindCanvas(){
     canvas.addEventListener("touchmove", touchmoved,false);
     canvas.addEventListener("mousedown", mousestarted,false);
     canvas.addEventListener("mousemove", mousemoved,true);  //does not work with false
+    canvas.addEventListener("mouseleave", mouseleft,false);
     canvas.addEventListener("mouseup",   mouseended,true); 
     canvas.addEventListener("touchend",  mouseended,false);
+    canvas.addEventListener("touchcancel",touchcanceled,false);
     console.log("Added event listeners");
     
     //click
@@ -663,8 +705,24 @@ function bindCanvas(){
 
 var switch_click_time = 0;
 
-function touchstarted(){
+function mouseleft(e){
+    console.log("Mouseleft!");
+    mouseended(e);
+}
+
+function touchcanceled(e){
+    console.log("Touchcanceled");
+    mouseended(e);
+}
+
+var touched_element;
+
+function touchstarted(event){
     stop_animation();
+    /*
+    var touch = event.touches[0];
+    touched_element = document.elementFromPoint(touch.pageX,touch.pageY);
+    */
     blockclick = false;
     dragging = false;
     moveTimeStamp = getTimeStamp();
@@ -673,6 +731,12 @@ function touchstarted(){
 }
 
 function touchmoved(event){
+    /*
+    var touches = event.touches[0];
+    if (touched_element !== document.elementFromPoint(touch.pageX,touch.pageY)) {
+        mouseended(event);
+    }
+    */
     //blockclick = true;
     if ((getTimeStamp()-moveTimeStamp)>100){
         blockclick = true;
@@ -981,7 +1045,9 @@ function update_info(name,state,cmd){
                     model_run_cmd(name,"info-hide-click");
                 });
                 
-                $("#info").append(pn).append($("<span>").append(open_btn)).append($("<span>").append(wiki_btn)).append($("<span>").append(hide_btn)).css({display:""});
+                $("#info").append(pn).append($("<span>").append(open_btn));
+                if (!nodocs) $("#info").append($("<span>").append(wiki_btn));
+                $("#info").append($("<span>").append(hide_btn)).css({display:""});
             }
             break;
         case "click-ext":
@@ -1245,9 +1311,13 @@ function parseURL() {
         case "nobuttons": nobuttons = true;break;
         case "animate": animate = true;break;
         case "nocontrols": nocontrols = true;break;
+        case "notitle": notitle = true;break;
+        case "nodocs": nodocs = true;break;
         case "fraction": fraction = parseInt(parameters[i][1]);break;
         case "halflife": halflife = parseInt(parameters[i][1]);break;
         case "releasetimelimit": moveReleaseTimeLimit = parseInt(parameters[i][1]);break;
+        case "screen_ratio": screen_ratio = parseFloat(parameters[i][1]);break;
+        case "zoom": zoom = parseFloat(parameters[i][1]);break;
         //case "settings": settings_file = parameters[i][1];break;
         }
     }
