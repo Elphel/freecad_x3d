@@ -414,7 +414,13 @@ function place_camera(){
         
         var boxsize;
         
-        boxsize = Math.max(...top_bboxsize);
+        console.log(top_bboxsize);
+        boxsize = 0;
+        for(var k=0;k<top_bboxsize.length;k++){
+            if (parseFloat(top_bboxsize[k])>boxsize) boxsize = parseFloat(top_bboxsize[k]);
+        }
+        
+        //boxsize = Math.max(...top_bboxsize);
         
         var view_distance = (boxsize/2)/Math.tan(fov/2);    
         
