@@ -40,6 +40,11 @@ function resize(){
     $("#title").css({
         left: ($("#main").width()/2-$("#title").width()/2)+"px",
     });
+    
+    $("#webgl_error").css({
+        top:($("#main").height()/2-$("#webgl_error").height()/2)+"px"
+    });
+    
 }
 
 var resizeTimer;
@@ -115,9 +120,55 @@ function prerun(){
     }
     
     //load x3dom.js
-    //$.getScript("x3dom-1.7.0/x3dom.js");
+    //$.getScript("x3dom-1.7.0/x3dom.debug.js",function(){
     //$.getScript("http://x3dom.org/download/1.7.1/x3dom.js");
-    $.getScript("http://x3dom.org/download/1.7/x3dom.js");
+    $.getScript("http://x3dom.org/download/1.7/x3dom.js",function(){
+        x3dom.runtime.ready = function() {
+            //x3dom.caps.BACKEND
+            if (x3dom.caps.BACKEND!="webgl"){
+                var webgl_error_background = $("<div>").css({
+                    position:"absolute",
+                    top:"0px",
+                    left:"0px",
+                    width:"100%",
+                    height:"100%",
+                    background:"black",
+                    "z-index":"999"
+                });
+                
+                var webgl_error = $("<div>",{id:"webgl_error"}).css({
+                    position:"absolute",
+                    top:"0px",
+                    left:"0px",
+                    width:"100%",
+                    color:"white",
+                    "font-size":"1.4em",
+                    "font-weight":"bold",
+                    "text-align":"center",
+                    background:"black",
+                    "z-index":"1000"
+                }).html("\
+This browser does not support WebGL. Please, check at <a style='color:rgba(100,200,255,1)' href='http://get.webgl.org/'>get.webgl.org</a><br/>\
+X3DOM Flash version is not available.<br/>\
+");             
+                
+                $("#main").append(webgl_error_background).append(webgl_error);
+                webgl_error.css({
+                    top:($("#main").height()/2-webgl_error.height()/2)+"px"
+                });
+                
+                //console.log($("#x3dom-x3d_canvas-object"));
+                $("#x3dom-x3d_canvas-object").remove();
+            }
+        };
+    });
+    
+    /*
+    x3dom.runtime.ready = function() {
+        console.log("About to render something the first time");
+        console.log("Backend2: "+x3dom.X3DCanvas.backend);
+    };
+    */
     
     var settings = $("<div>").load(settings_file,function(response,status,xhr){
         if (xhr.status==200){
@@ -138,6 +189,7 @@ function prerun(){
     var showall = 1;
     var element = document.getElementById('x3d_canvas');
     $(document).load(function(){
+        
         element.runtime.enterFrame = function() {
             if (showall==1) {
                 element.runtime.examine();
@@ -712,8 +764,10 @@ function bindCanvas(){
 var switch_click_time = 0;
 
 function mouseleft(e){
-    console.log("Mouseleft!");
-    mouseended(e);
+    if (e.which==1){
+        console.log("Mouseleft!");
+        mouseended(e);
+    }
 }
 
 function touchcanceled(e){
