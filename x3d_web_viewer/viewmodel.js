@@ -93,30 +93,15 @@ function prerun(){
     });
         
     var x3d_cnv_trans = $("<Transform id='anima' DEF='ball'>");
-    
-    var x3d_cnv_anim = $("\
-<timeSensor DEF='time' cycleInterval='50' loop='true'></timeSensor>\
-<orientationInterpolator DEF='move' key='0 0.5 1' keyValue='0 0 1 0 0 0 1 3.14159 0 0 1 6.28317'></orientationInterpolator>\
-<Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\
-<Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\
-");
-    
+        
     x3d_cnv_trans.append(x3d_cnv_in);
-    
-    if (animate){
-        x3d_cnv_trans.append(x3d_cnv_anim);
-    }
-    
+        
     var scene = $("<Scene>");
     scene.append(x3d_cnv_trans);
     x3d_cnv.append(scene);
             
     if (animate){
-        console.log($("#anima").find("timeSensor"));
-        //$("#anima").find("timeSensor").attr("loop","true");
-        //$("#anima").find("timeSensor").attr("enabled","true");
-        //$("timeSensor").prop("loop","true");
-        //$("timeSensor").prop("isActive","true");
+        start_animation();
     }
     
     //load x3dom.js
@@ -162,14 +147,7 @@ X3DOM Flash version is not available.<br/>\
             }
         };
     });
-    
-    /*
-    x3dom.runtime.ready = function() {
-        console.log("About to render something the first time");
-        console.log("Backend2: "+x3dom.X3DCanvas.backend);
-    };
-    */
-    
+        
     var settings = $("<div>").load(settings_file,function(response,status,xhr){
         if (xhr.status==200){
             var xml = $.parseXML(response);
@@ -189,7 +167,6 @@ X3DOM Flash version is not available.<br/>\
     var showall = 1;
     var element = document.getElementById('x3d_canvas');
     $(document).load(function(){
-        
         element.runtime.enterFrame = function() {
             if (showall==1) {
                 element.runtime.examine();
@@ -222,110 +199,8 @@ X3DOM Flash version is not available.<br/>\
         };
     });
     
-    //help button
-    //var hlp = $("<a href='http://www.x3dom.org/documentation/interaction/'>").addClass("btn btn-primary nooutline btn-sm btn-my").html("?");
-    var hlp = $("<div>").addClass("btn btn-primary nooutline btn-sm btn-my").html("?");
-    hlp.css({
-        position:"absolute",
-        right: "3px",
-        top: "3px",
-        background:"rgba(100,100,100,0.7)",
-        border: "1px solid gray",
-        padding: "0px 6px 0px 6px"
-    });
-    
-    var hlp_text = $("<div>",{id:"help-text"}).css({
-        position:"absolute",
-        top:"2px",
-        right:"2px",
-//         width:"800px",
-//         height:"600px",
-        "border-radius":"2px",
-        border: "1px solid gray",
-        color:"white",
-        "font-size":"1.2em",
-        padding:"10px 10px 10px 10px",
-        background:"rgba(50,50,50,0.9)",
-        display:"none"
-    });
-    
-    hlp_text.html("\
-<table>\
-<tr>\
-    <td>Display area:<td>\
-</tr>\
-<tr>\
-    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; left-click:</b></td>\
-    <td valign='top'>select/deselect part and its copies</td>\
-</tr>\
-<tr>\
-    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; left-click + move:</b></td>\
-    <td valign='top'>rotate</td>\
-</tr>\
-<tr>\
-    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; right-click:</b></td>\
-    <td valign='top'>hide part and its copies</td>\
-</tr>\
-<tr>\
-    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; right-click + move:</b></td>\
-    <td valign='top'>zoom</td>\
-</tr>\
-<tr>\
-    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; middle-click + move:</b></td>\
-    <td valign='top'>drag</td>\
-</tr>\
-<tr>\
-    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dbl-left-click:</b></td>\
-    <td valign='top'>hide part and its copies, <span style='color:rgba(255,100,100,1)'><b>interferes with center of rotation</b></span></td>\
-</tr>\
-<tr>\
-    <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dbl-middle-click:</b></td>\
-    <td valign='top'>set center of rotation</td>\
-</tr>\
-<tr>\
-    <td>Side buttons (if enabled):</td>\
-</tr>\
-<tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <span style='padding:1px 5px;background:green;border-radius:2px 0px 0px 2px;'>abc</span><span style='padding:1px 5px;background:white;border-radius:0px 2px 2px 0px;color:black;'>&#x25BE;</span>&nbsp;<b>:</b></td>\
-    <td><b>abc</b> = Part Number</td>\
-</tr>\
-<tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <span style='padding:1px 5px;background:green;border-radius:2px 0px 0px 2px;'>abc</span> left-click:</b></td>\
-    <td>select / single / hide / delesect</td>\
-</tr>\
-<tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dropdown</b> <span style='padding:1px 5px;background:green;border-radius:2px;'>all</span> <b>:</b></td>\
-    <td>hide/show part and its copies</td>\
-</tr>\
-<tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; dropdown</b> <span style='padding:1px 5px;background:green;border-radius:2px;'>1</span> <b>:</b></td>\
-    <td>hide/show single part or copy</td>\
-</tr>\
-<tr>\
-    <td>X3DOM controls help:</td>\
-</tr>\
-<tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='http://www.x3dom.org/documentation/interaction/' style='color:white'><img src='http://www.x3dom.org/wp-content/themes/x3domnew/x3dom_logo.png' style='background:rgba(250,250,250,0.8);height:25px;padding:3px'/> www.x3dom.org</a></td>\
-</tr>\
-<tr>\
-    <td>Source code:</td>\
-</tr>\
-<tr>\
-    <td>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; <a href='https://github.com/Elphel/freecad_x3d' style='color:white'><img src='http://blog.elphel.com/wp-content/themes/pixelgreen/images/blog-logo.png' style='height:25px;'/> Elphel <img src='https://github.com/fluidicon.png' style='height:25px;'/> github.com</a></td>\
-</tr>\
-</table>\
-");
-    
-    
-    hlp.click(function(){
-        hlp_text.css({display:""});
-    });
-    
-    hlp_text.click(function(){
-        $(this).css({display:"none"});
-    });
-    
-    $("#main").append(hlp).append(hlp_text);
+    //help
+    init_help($("#main"));
     
     //info popup
     var info = $("<div>",{id:"info"}).css({
@@ -389,14 +264,8 @@ X3DOM Flash version is not available.<br/>\
     }
     
     var index = model.lastIndexOf("/");
-    /*
-    if (index<0){
-        index = 0;
-    }
-    */
     var model_pn = model.substr(index+1);
     model_pn = model_pn.slice(0,-4);
-    
     
     var pn_title = $("<div>",{id:"title"}).css({
         position:"absolute",
@@ -492,7 +361,6 @@ function place_camera(){
         var x3d_cnv_ni = $("NavigationInfo");
         x3d_cnv_ni.prop("speed",Math.round(Math.sqrt(view_distance)/5));
         console.log("speed is "+x3d_cnv_ni.prop("speed"));
-        
     }
 }
 
@@ -974,60 +842,15 @@ function inertial_rotate(){
             keyValueStr += " "+animation_array[i][1];
         }
         
-        var x3d_cnv_anim = $("\
-        <timeSensor DEF='time' cycleInterval='"+((animation_duration/1000))+"' loop='false' enabled='true' startTime='"+(getTimeStamp()/1000)+"'></timeSensor>\
-        <orientationInterpolator DEF='move' key='"+keyStr+"' keyValue='"+keyValueStr+"'></orientationInterpolator>\
-        <Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\
-        <Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\
-        ");
+        var ts = "<timeSensor DEF='time' cycleInterval='"+((animation_duration/1000))+"' loop='false' enabled='true' startTime='"+(getTimeStamp()/1000)+"'></timeSensor>\n";
+        var oi = "<orientationInterpolator DEF='move' key='"+keyStr+"' keyValue='"+keyValueStr+"'></orientationInterpolator>\n";
+        var r1 = "<Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\n";
+        var r2 = "<Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\n";
+        
+        var x3d_cnv_anim = $(ts+oi+r1+r2);
             
         $("#anima").append(x3d_cnv_anim);
         $("timeSensor").attr("enabled",true);
-        /*
-        setInterval(function(){
-           console.log($("timeSensor").attr("startTime"));
-           console.log($("timeSensor").attr("time"));
-        },50);
-        */
-        
-        //$("#anima").prepend(ats);
-        
-        //newTime=getTimeStamp();
-        //dt = newTime - lastRotatedTime;
-        //lastRotatedTime = newTime;
-        
-        //inertial_rot_axis_speed[1] *= Math.exp(-dt/rotationTime);
-        //console.log("inertial_rotate, velocity= "+inertial_rot_axis_speed[1]);
-        
-        //var ts=getTimeStamp();
-        //var dt= (ts - last_timestamp);
-        //last_timestamp = ts;
-
-        //console.log("inertial_rotate, velocity= "+inertial_rot_axis_speed[1]);
-        //q=x3dom.fields.Quaternion.axisAngle(inertial_rot_axis_speed[0],  inertial_rot_axis_speed[1]*dt);
-        //console.log("inertial_rotate, q= "+q.toString());
-        //rm = new x3dom.fields.SFMatrix4f();
-        //rm.setRotate(q);
-        //console.log("rm= "+rm.toString());
-
-        //am = document.getElementById('x3d_canvas').runtime.getCurrentTransform(document.getElementById("anima"))
-
-        //am = am.mult(rm);
-        //am = rm.mult(am);
-
-        //var translation = new x3dom.fields.SFVec3f(0,0,0);
-        //var scaleFactor = new x3dom.fields.SFVec3f(1,1,1);
-        //var rotation = new x3dom.fields.Quaternion(0,0,1,0);
-        //var scaleOrientation = new x3dom.fields.Quaternion(0,0,1,0);
-        //am.getTransform(translation, rotation, scaleFactor, scaleOrientation);
-        //aa= rotation.toAxisAngle();
-        
-        //document.getElementById("anima").setAttribute("rotation",aa[0].toString()+" "+aa[1])
-               
-        //document.getElementById('x3d_canvas').runtime.viewpoint()._viewMatrix = vm; //.mult(rm); 
-        //document.getElementById("viewpoint").setAttribute("rotation",aa[0].toString()+" "+aa[1])
-        
-        //aa[0].toString()
     }
 }
 
@@ -1038,30 +861,18 @@ function stop_animation(){
 }
 
 function start_animation(){
-    console.log("restart animation");    
-    var x3d_cnv_anim = $("\
-<timeSensor DEF='time' cycleInterval='50' loop='true'></timeSensor>\
-<orientationInterpolator DEF='move' key='0 0.5 1' keyValue='0 0 1 0 0 0 1 3.14159 0 0 1 6.28317'></orientationInterpolator>\
-<Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\
-<Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\
-");
-    
+    console.log("restart animation");
+    var ts = "<timeSensor DEF='time' cycleInterval='50' loop='true'></timeSensor>\n";
+    var oi = "<orientationInterpolator DEF='move' key='0 0.5 1' keyValue='0 0 1 0 0 0 1 3.14159 0 0 1 6.28317'></orientationInterpolator>\n";
+    var r1 = "<Route fromNode='time' fromField ='fraction_changed' toNode='move' toField='set_fraction'></Route>\n";
+    var r2 = "<Route fromNode='move' fromField ='value_changed' toNode='ball' toField='set_rotation'></Route>\n";
+    var x3d_cnv_anim = $(ts+oi+r1+r2);
     $("#anima").append(x3d_cnv_anim);
 }
 
 function getTimeStamp(){
     var d = new Date();
     return d.getTime();
-}
-
-function blockclique(){
-    blockclick = true;
-    //moveTimerSet = false;
-}
-
-function unblockclique(){
-    blockclick = false;
-    //moveTimerSet = false;
 }
 
 function update_info(name,state,cmd){
@@ -1313,11 +1124,6 @@ function model_run_cmd(name,cmd){
     }
 }
 
-function handleClick(event){
-    console.log(event.hitPnt);
-    console.log($(this));
-}
-
 function btn_subpart_click(subpart,sublist){
     var index = subpart.attr("index");
     var selected = subpart.attr("selected");
@@ -1402,9 +1208,9 @@ function getColorByNSN(nsn){
     }
     tmp_result += nsn_arr[1]*2;
     
-    var g = 100 + ((tmp_result>>6)&0x7)*20;
-    var b = 100 + ((tmp_result>>3)&0x7)*5;
-    var r = 100 + ((tmp_result>>0)&0x7)*20;
+    var g = 50 + ((tmp_result>>6)&0x7)*30;
+    var b = 50 + ((tmp_result>>3)&0x7)*5;
+    var r = 50 + ((tmp_result>>0)&0x7)*30;
     
     return "rgba("+r+","+g+","+b+",1)";
 }
