@@ -17,7 +17,7 @@ function init_help(element){
 </tr>\
 <tr>\
     <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; right-click:</b></td>\
-    <td valign='top'>hide part and its copies</td>\
+    <td valign='top'>hide part and its copies. <b>undo</b>-button to unhide</td>\
 </tr>\
 <tr>\
     <td valign='top'>&nbsp;&nbsp;&nbsp;&nbsp;<b>&#8226; right-click + move:</b></td>\

@@ -274,6 +274,7 @@ X3DOM Flash version is not available.<br/>\
     $("#v7").css({cursor:"pointer"}).click(function(){element.runtime.resetView();});
     
     if (nocontrols) {
+        undo_model.css({display:"none"});
         rst_model.css({display:"none"});
         hlp.css({display:"none"});
         $("#thrd").css({display:"none"});
