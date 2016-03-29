@@ -22,6 +22,8 @@ var inherited_parameters = "";
 var screen_ratio = 1;//w/h
 var zoom = 0.9;
 
+var undo = Array();
+
 function resize(){
     console.log("resize");
     var w = $(window).width();
@@ -240,6 +242,20 @@ X3DOM Flash version is not available.<br/>\
     
     $("#main").append(rst_model);
 
+    undo_model = $("<button>",{id:"undo_model"}).addClass("btn-my btn nooutline").html("undo").css({
+        position: "absolute",
+        top: "3px",
+        left: "105px",
+        cursor:"pointer"
+    });
+    
+    undo_model.click(function(){
+        model_run_cmd(undo[undo.length-1],"click-int-all");
+        undo.pop();
+    });
+    
+    $("#main").append(undo_model);   
+    
     $("#thrd").css({
         position:"absolute",
         top: "3px",
@@ -734,7 +750,7 @@ function mouseended(event){
     
         //deltat
         dt = last_state.timestamp - move_history[use_index].timestamp;
-        console.log("Using samle #"+i +" behind="+(move_history.length-i)+" dist="+dist+" dt="+(dt/1000)+"s");
+        console.log("Using sample #"+i +" behind="+(move_history.length-i)+" dist="+dist+" dt="+(dt/1000)+"s");
         
         if (dt == 0) {
                 inertial_rot_axis_speed=[new x3dom.fields.SFVec3f(0,0,1),0];
@@ -932,6 +948,8 @@ function update_info(name,state,cmd){
 }
 
 function model_run_cmd(name,cmd){
+	//undo = $.data(document.body, "main");
+	//undo = $("#x3d_canvas").clone();
     var state = "";
     if (name!="reset"){
         state = $("Switch[nsn="+name+"]").attr("state");
@@ -939,6 +957,8 @@ function model_run_cmd(name,cmd){
     }
     switch(cmd){
         case "right-click":
+            //save to undo
+            undo[undo.length]=name;
             //update status to "disabled"
             $("Switch[nsn="+name+"]").attr("state","disabled");
             //whichChoice -1
