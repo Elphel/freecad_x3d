@@ -242,11 +242,15 @@ X3DOM Flash version is not available.<br/>\
     
     $("#main").append(rst_model);
 
-    undo_model = $("<button>",{id:"undo_model"}).addClass("btn-my btn nooutline").html("undo").css({
+    undo_model = $("<button>",{id:"undo_model"}).addClass("btn-my btn nooutline").html("<span class=\"glyphicon glyphicon-share-alt\" aria-hidden=\"true\"></span>").css({
         position: "absolute",
         top: "3px",
         left: "105px",
-        cursor:"pointer"
+        cursor:"pointer",
+        "-moz-transform": "scaleX(-1)",
+        "-o-transform": "scaleX(-1)",
+        "-webkit-transform": "scaleX(-1)",
+        transform: "scaleX(-1)"
     });
     
     undo_model.click(function(){
