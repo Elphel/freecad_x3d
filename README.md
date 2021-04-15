@@ -4,6 +4,9 @@ by other mechanical CAD programs.
 
 * Update: Here is the result of such conversion of 800+ parts and a few assemblies: http://wiki.elphel.com/index.php?title=Elphel_camera_assemblies
 
+x3d_step_assy.py -  original version for Python 2.7
+x3d_step_assy3.py - version for Python 3
+
 This macro converts assembly CAD model to X3D. It tries to recognize
 individual parts (provided as STEP files) in the assembly model, converts
 each part to X3D and then generates assembly X3D file that includes inline
