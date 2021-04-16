@@ -999,9 +999,12 @@ def prepareX3dExport(freecadObjects, fname=""):
         if (not o.ViewObject) or (o.ViewObject.Visibility):
             if hasattr(o, "Shape"):
                 color_set=set()
-                if o.ViewObject:
-                    for clr in o.ViewObject.DiffuseColor:
-                        color_set.add(clr)
+                try:
+                    dc = o.ViewObject.DiffuseColor
+                except AttributeError:
+                    continue 
+                for clr in dc: 
+                    color_set.add(clr)
                 if (len(color_set)>1): # process multi-color objects
                     col_list = list(color_set)
                     col_dict={} # index for each color (reverse to list)
