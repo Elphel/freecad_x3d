@@ -40,7 +40,7 @@ import os
 import time
 import pickle
 import math
-
+import pprint # pretty print objects
 
 import xml.etree.ElementTree as et
 from xml.dom import minidom
@@ -52,7 +52,7 @@ from PySide import QtCore, QtGui
 from configparser import ConfigParser #In Python 3, ConfigParser has been renamed to configparser for PEP 8 compliance. 
 import sys
 import traceback
-
+#https://github.com/FreeCAD/FreeCAD/blob/master/src/Mod/Part/App/ImportStep.cpp
 CONFIG_PATH= "~/.FreeCAD/x3d_step_assy.ini"
 ROOT_DIR = '~/parts/0393/export'
 STEP_PARTS='~/parts/0393/export/step_parts'
@@ -248,11 +248,17 @@ def create_file_info(freecadObjects, fname=""):
 
     progress_bar = Base.ProgressIndicator()
     progress_bar.start("Generating objects%s to export to X3D ..."%(txt), len(freecadObjects))
+    FreeCAD.Console.PrintMessage("Generating %d objects%s to export to X3D\n"%( len(freecadObjects), txt));
+    print("Generating %d objects%s to export to X3D\n"%( len(freecadObjects), txt));
 
     objects = []
+    
+    pp = pprint.PrettyPrinter(indent=4)
 
     allSolids=[]
     for o in freecadObjects:
+#        FreeCAD.Console.PrintMessage("Generating object # %d\n"%(no));
+#        print("Generating object # %d"%(no));
         if hasattr(o, "Shape"):
             shape=o.Shape
             #repairing open shells
@@ -265,15 +271,17 @@ def create_file_info(freecadObjects, fname=""):
                 fromShell=False
             # get all colors for faces in this object (normally just one Shell/Solid
             color_set=set()
-            if o.ViewObject:
-                for clr in o.ViewObject.DiffuseColor: # colors are one per face
-                    color_set.add(clr)
+            try:
+                dc = o.ViewObject.DiffuseColor
+            except AttributeError:
+                continue 
+            for clr in dc: # colors are one per face
+                color_set.add(clr)
             col_list = list(color_set)
             col_dict={} # index for each color (reverse to list)
             for i, clr in enumerate(col_list):
                 col_dict[clr] = i
             #Calculate per-color centers for each object (normally each object has just one Solid/Shell
-            dc=o.ViewObject.DiffuseColor
             if (len(dc) == 1) and (len(o.Shape.Faces)>1):
                 dc= dc * len(o.Shape.Faces)
             colorCenters=[[0.0,0.0,0.0,0.0] for c in col_list] # SX,SY,SZ,S0
@@ -432,6 +440,9 @@ def get_info_files(dir_list = None):
         info_path = os.path.join(ROOT_DIR,INFO_DIR, name + INFO_EXT)
         info_dict[name] = pickle.load(open(info_path, "rb"))
         progress_bar.next()
+        print("Read info for ", name)
+        if name == '0393-13-14A':
+            print ('info_dict[name]=',info_dict[name])
     progress_bar.stop()
 #    FreeCAD.Console.PrintMessage("get_info_files() - loaded"); #Rare FreeCAD crash?
 
@@ -480,11 +491,24 @@ def findPartsTransformations(solids, objects, candidates, info_dict, insidePreci
         trans={}
         print ("%d findPartsTransformations:"%(i))
         for cand_name in candidates[i]:
+            print("cand_name=",cand_name)
             co = info_dict[cand_name][0] # First solid in the candidate part file 
+            print("co=",co)
+            print("candidates[i]=",candidates[i])
+            print("candidates[i][cand_name]=",candidates[i][cand_name])
             try:
                 colorCenters = co['colorCenters']
             except:
-                colorCenters = {}    
+                colorCenters = {}
+            """
+def ppToMatrix(pp,
+               center =      (0,0,0),
+               colorCenters = {}, # should have all the colors in a colors list "by design"
+               colors =       [],
+               orient  =      0,
+               precision =    PRECISION): 
+            
+            """
             matrix_part = ppToMatrix(co['principal'],co['center'], colorCenters, candidates[i][cand_name], 0, precision)
             
             # Now try 4 orientations (until the first match).
@@ -641,8 +665,14 @@ def findComponents(assembly,
         FreeCAD.Console.PrintMessage("Using provided objects @%f"%(len(assembly.Solids), time.time()-start_time));
         objects,solids = create_file_info_nogui(shape, aname)
 #        shape = assembly
-    else:    
+    else:
+        print("GUI mode: assembly=",assembly) # [<Part::PartFeature>]
         objects,solids = create_file_info(assembly, aname)
+        print("GUI mode: objects=",objects)
+        print("GUI mode: solids=",solids)
+        
+    show_best = True #FIXME: debugging
+    
 #    print (objects)
     progress_bar = Base.ProgressIndicator()
     progress_bar.start("Looking for matching parts for each of the assembly element ...", len(objects))
@@ -688,7 +718,8 @@ def findComponents(assembly,
                                                                                 errors[1]/o['area'],
                                                                                 errors[2]/rg_av,
                                                                                 errors[3]/rg_av,
-                                                                                errors[4]/rg_av))        
+                                                                                errors[4]/rg_av))
+        print ("this_candidates=",this_candidates)
         # Filter candidates by number of color areas matched
         colored_candidates=colorMatchCandidate(o, this_candidates, info_dict, precision_area)
         try:
@@ -1596,7 +1627,9 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.setGeometry(100, 100, 300, 200)
  
         self.setWindowTitle("STEP assembly to X3D converter")
- 
+        FreeCAD.Console.PrintMessage("Disabling STEP compound merge in preferences/Import-Export/STEP");
+#FIXME - uncomment when done. Merges STEP solid into a single grey object        
+        App.ParamGet("User parameter:BaseApp/Preferences/Mod/Import/hSTEP").SetBool('ReadShapeCompoundMode',False)
     #----------------------------------------------------------------------
     def selectLogFile(self):
         prompt_file = self.log_file
