@@ -249,16 +249,16 @@ def create_file_info(freecadObjects, fname=""):
     progress_bar = Base.ProgressIndicator()
     progress_bar.start("Generating objects%s to export to X3D ..."%(txt), len(freecadObjects))
     FreeCAD.Console.PrintMessage("Generating %d objects%s to export to X3D\n"%( len(freecadObjects), txt));
-    print("Generating %d objects%s to export to X3D\n"%( len(freecadObjects), txt));
+    print("create_file_info(): Generating %d objects%s to export to X3D\n"%( len(freecadObjects), txt));
 
     objects = []
     
     pp = pprint.PrettyPrinter(indent=4)
 
     allSolids=[]
-    for o in freecadObjects:
+    for no,o in enumerate (freecadObjects):
 #        FreeCAD.Console.PrintMessage("Generating object # %d\n"%(no));
-#        print("Generating object # %d"%(no));
+        print("Generating object # %d"%(no));
         if hasattr(o, "Shape"):
             shape=o.Shape
             #repairing open shells
@@ -275,9 +275,12 @@ def create_file_info(freecadObjects, fname=""):
                 dc = o.ViewObject.DiffuseColor
             except AttributeError:
                 continue 
+            print("dc=",dc);
+
             for clr in dc: # colors are one per face
                 color_set.add(clr)
             col_list = list(color_set)
+            print("col_list=",col_list);
             col_dict={} # index for each color (reverse to list)
             for i, clr in enumerate(col_list):
                 col_dict[clr] = i
@@ -644,7 +647,7 @@ def findComponents(assembly,
     aname = ""
     if not assembly: # including "" string
         assembly = FreeCAD.activeDocument().Objects
-        FreeCAD.Console.PrintMessage("Using %d solids in the active document @%f"%(len(assembly), time.time()-start_time));
+        FreeCAD.Console.PrintMessage("Using %d solids in the active document @%f\n"%(len(assembly), time.time()-start_time));
     if isinstance (assembly, (bytes,str)):
         assembly_path = assembly
         aname,_ =  os.path.splitext(os.path.basename(assembly_path))
@@ -653,7 +656,7 @@ def findComponents(assembly,
             assembly = Part.read(assembly_path)
             print(" got %d solids @%f"%(len(assembly.Solids), time.time()-start_time))
         else:    
-            FreeCAD.Console.PrintMessage("Using STEP file assembly %s @%f"%(assembly_path, time.time()-start_time));
+            FreeCAD.Console.PrintMessage("Using STEP file assembly %s @%f\n"%(assembly_path, time.time()-start_time));
             FreeCAD.loadFile(assembly_path)
             doc = FreeCAD.activeDocument()
             doc.Label = aname
@@ -662,7 +665,7 @@ def findComponents(assembly,
             FreeCAD.Console.PrintMessage(" got %d solids @%f\n"%(len(assembly), time.time()-start_time));
     # assuming assembly is doc.Objects
     if isinstance(assembly,Part.Shape):    
-        FreeCAD.Console.PrintMessage("Using provided objects @%f"%(len(assembly.Solids), time.time()-start_time));
+        FreeCAD.Console.PrintMessage("Using provided objects @%f\n"%(len(assembly.Solids), time.time()-start_time));
         objects,solids = create_file_info_nogui(shape, aname)
 #        shape = assembly
     else:
@@ -1144,7 +1147,8 @@ def generateAssemblyX3d(assembly_path,
                         precision_volume =   PRECISION_VOLUME,
                         precision_gyration = PRECISION_GYRATION,
                         precision_inside =   PRECISION_INSIDE,
-                        precision =          PRECISION
+                        precision =          PRECISION,
+                        assembly_suffix =    ASSEMBLY_SUFFIX
                         ):
     """
     Generate X3D file for the assembly and the parts (if they are not yet converted)
@@ -1159,6 +1163,8 @@ def generateAssemblyX3d(assembly_path,
     @param precision_gyration = PRECISION_GYRATION - relative precision in radius of gyration calculations
     @param precision_inside = PRECISION_INSIDE - relative precision in calculations of point inside/outside of a solid
     @param precision =        PRECISION - precision in vector calculation
+    @param assembly_suffix =  ASSEMBLY_SUFFIX - generated assembly file name suffix 
+    
 
     @return a dictionary with 4 fields (each list value has the same number of elements):
                               'solids' - a list of solids in the assembly
@@ -1191,8 +1197,8 @@ def generateAssemblyX3d(assembly_path,
         assName= FreeCAD.activeDocument().Objects[0].Label
     FreeCAD.Console.PrintMessage("findComponents() Done, ass_name=%s\n"%(assName));
     ass_with_suffix = assName
-    if not ass_with_suffix.endswith(ASSEMBLY_SUFFIX):
-        ass_with_suffix = assName + ASSEMBLY_SUFFIX       
+    if not ass_with_suffix.endswith(assembly_suffix):
+        ass_with_suffix = assName + assembly_suffix       
     FreeCAD.Console.PrintMessage("ass_with_suffix=%s\n"%(ass_with_suffix));
     x3dFile = os.path.join(ROOT_DIR,X3D_DIR, ass_with_suffix + X3D_EXT) # currently in the same directory as parts
     x3dNode = et.Element('x3d')
@@ -1239,10 +1245,10 @@ def generateAssemblyX3d(assembly_path,
             FreeCAD.Console.PrintMessage("Component %d does not have any matches, ignoring. Candidates: %s\n"%(i,str(components['candidates'][i])))
             continue
         part = list(transformations.keys())[0]
-        # rename part if there is the same one with ASSEMBLY_SUFFIX
+        # rename part if there is the same one with assembly_suffix
         part_name = part
-        if ASSEMBLY_SUFFIX and os.path.isfile( os.path.join(ROOT_DIR, X3D_DIR, part + ASSEMBLY_SUFFIX + X3D_EXT)) :
-            part_name = part + ASSEMBLY_SUFFIX
+        if assembly_suffix and os.path.isfile( os.path.join(ROOT_DIR, X3D_DIR, part + assembly_suffix + X3D_EXT)) :
+            part_name = part + assembly_suffix
         
         transformation = transformations[part]    
         bbox= bBoxToX3d(components['solids'][i].BoundBox)
@@ -1250,7 +1256,7 @@ def generateAssemblyX3d(assembly_path,
         transform = matrix4ToX3D(transformation)
         rot=transform['rotation']
         print("%d: Adding %s, rotation = (x=%f y=%f z=%f theta=%f)"%(i,part,rot[0],rot[1],rot[2],rot[3]))
-        FreeCAD.Console.PrintMessage("%d: Adding %s, rotation = (x=%f y=%f z=%f theta=%f)"%(i,part,rot[0],rot[1],rot[2],rot[3]))
+        FreeCAD.Console.PrintMessage("%d: Adding %s, rotation = (x=%f y=%f z=%f theta=%f)\n"%(i,part,rot[0],rot[1],rot[2],rot[3]))
         if part in defined_parts:
             defined_parts[part] += 1
         else:
@@ -1630,7 +1636,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         self.setGeometry(100, 100, 300, 200)
  
         self.setWindowTitle("STEP assembly to X3D converter")
-        FreeCAD.Console.PrintMessage("Disabling STEP compound merge in preferences/Import-Export/STEP");
+        FreeCAD.Console.PrintMessage("Disabling STEP compound merge in preferences/Import-Export/STEP\n");
 #FIXME - uncomment when done. Merges STEP solid into a single grey object        
         App.ParamGet("User parameter:BaseApp/Preferences/Mod/Import/hSTEP").SetBool('ReadShapeCompoundMode',False)
     #----------------------------------------------------------------------
@@ -1815,7 +1821,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
             msgBox = QtGui.QMessageBox.critical(self,"BOM not available", "BOM is available only after assembly conversion")
             msgBox.exec_()
             return
-        FreeCAD.Console.PrintMessage("Getting BOM...")
+        FreeCAD.Console.PrintMessage("Getting BOM...\n")
         self.preRun()
         bom = getBOM()
         try:
@@ -1839,7 +1845,7 @@ class X3dStepAssyDialog(QtGui.QWidget):
         return
         
     def showOffsets(self):
-        FreeCAD.Console.PrintMessage("Starting parts offsets calculation...")
+        FreeCAD.Console.PrintMessage("Starting parts offsets calculation...\n")
         self.preRun()
         offsets = list_parts_offsets()
 
@@ -1863,10 +1869,18 @@ class X3dStepAssyDialog(QtGui.QWidget):
         else:
             sys.stdout = sys.__stdout__
 
-##        try: # does not work
-        components=generateAssemblyX3d(self.assembly_path) # If None - will use ActiveDocument().Objects
- ##       except:
- ##           self.errorDialog(traceback.format_exc())    
+        components=generateAssemblyX3d(
+            assembly_path = self.assembly_path, # If None - will use ActiveDocument().Objects
+            dir_list =      self.step_parts_path,
+            colorPerVertex =     COLOR_PER_VERTEX,
+            precision_area =     self.precision_area,
+            precision_volume =   self.precision_volume,
+            precision_gyration = self.precision_gyration,
+            precision_inside =   self.precision_inside,
+            precision =          self.precision,
+            assembly_suffix =    self.assembly_suffix
+            )
+        
         showFailedComponents(components)
         sys.stdout.close()
         sys.stdout = sys.__stdout__
